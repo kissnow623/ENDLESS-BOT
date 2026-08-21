@@ -1,4 +1,11 @@
 require('dotenv').config();
+
+// ==========================================
+// 🌐 0️⃣ 強制使用 IPv4 (破解 Render 網路黑洞)
+// ==========================================
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
+
 const { 
     Client, GatewayIntentBits, Partials, ActionRowBuilder, 
     ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, 
@@ -65,7 +72,7 @@ const client = new Client({
     partials: [Partials.User, Partials.GuildMember]
 });
 
-// 🌟🌟🌟 新增：X光透視模式 (追蹤所有的網路連線狀態) 🌟🌟🌟
+// 🌟 X光透視模式 (追蹤所有的網路連線狀態)
 client.on('debug', info => console.log(`[DJS 連線追蹤] ${info}`));
 client.on('warn', info => console.log(`[DJS 警告] ${info}`));
 client.on('error', error => console.error(`[DJS 錯誤]`, error));
@@ -261,7 +268,7 @@ client.on('interactionCreate', async interaction => {
 // 💌 5️⃣ 處理新成員加入
 // ==========================================
 client.on('guildMemberAdd', async member => {
-    try { await member.send(`👋 歡迎來到 **ENDLESS**！請輸入 \`/解鎖權限\` 申請身分。`); } catch (error) {}
+    try { await member.send(`👋 歡迎來到 **ENDLESS**！請前往伺服器內的任意頻道，輸入 \`/解鎖權限\` 指令來申請身分。`); } catch (error) {}
 });
 
 // ==========================================
