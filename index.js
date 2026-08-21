@@ -10,14 +10,14 @@ const express = require('express');
 const admin = require('firebase-admin');
 
 // ==========================================
-// 1️⃣ Firebase 驗證與初始化
+// 1️⃣ Firebase 驗證與初始化 (嚴謹版與 Emoji 日誌)
 // ==========================================
 let serviceAccount;
 try {
     serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 } catch (error) {
-    console.error("❌ Firebase 金鑰解析失敗！請確認 Render 環境變數設定。");
-    process.exit(1);
+    console.error("❌ [錯誤] Firebase 金鑰解析失敗！請確認 Render 環境變數 (FIREBASE_SERVICE_ACCOUNT) 格式是否正確。");
+    process.exit(1); 
 }
 
 if (serviceAccount && !admin.apps.length) {
@@ -97,7 +97,6 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const cmd = interaction.commandName;
         
-        // 🛡️ 權限檢查：解鎖權限 & 查詢成員 只能由管理員使用
         const isOwner = interaction.user.id === interaction.guild?.ownerId; 
         const hasAdminRole = interaction.member.roles.cache.hasAny(...config.roles.adminRoles); 
         const hasAdminPerm = interaction.member.permissions.has(PermissionFlagsBits.Administrator); 
@@ -106,7 +105,6 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: '❌ 很抱歉，您沒有權限使用此指令。', ephemeral: true });
         }
 
-        // 🟢 指令 1：/解鎖權限
         if (cmd === '解鎖權限') {
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('btn_member').setLabel('公會成員').setStyle(ButtonStyle.Primary),
@@ -115,34 +113,22 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: '歡迎來到 ENDLESS，這裡是一個大家庭，請告訴我們，您是我們的…', components: [row], ephemeral: true });
         }
 
-        // 🟢 指令 2：/查詢目前公會成員
         if (cmd === '查詢目前公會成員') {
-            await interaction.deferReply({ ephemeral: true }); // 先延遲回覆，避免資料庫撈太久超時
-            
+            await interaction.deferReply({ ephemeral: true }); 
             try {
                 const snapshot = await db.collection('members').where('role', '==', '公會成員').get();
                 if (snapshot.empty) return interaction.editReply('目前資料庫中沒有公會成員紀錄。');
 
                 let members = [];
                 snapshot.forEach(doc => members.push(doc.data()));
-
-                // 依照等級由高到低排序 (轉為數字比較)
                 members.sort((a, b) => parseInt(b.gameLevel) - parseInt(a.gameLevel));
 
-                // 組合列表字串 (避免超過字數限制，每10人一組顯示或簡化顯示)
-                let description = `目前公會總人數：**${members.length}** 人\n\n`;
-                description += `**【 成員等級排行榜 】**\n`;
-                
+                let description = `目前公會總人數：**${members.length}** 人\n\n**【 成員等級排行榜 】**\n`;
                 members.forEach((m, index) => {
-                    // Discord Embed Description 限制 4096 字，若人數過多這裡未來需做分頁
                     description += `${index + 1}. **${m.gameName}** (LV.${m.gameLevel}) - ${m.gameClass}\n`;
                 });
 
-                const embed = new EmbedBuilder()
-                    .setTitle('🛡️ ENDLESS 公會成員名冊')
-                    .setDescription(description.substring(0, 4000)) // 防呆裁切
-                    .setColor('#FFD700');
-
+                const embed = new EmbedBuilder().setTitle('🛡️ ENDLESS 公會成員名冊').setDescription(description.substring(0, 4000)).setColor('#FFD700');
                 return interaction.editReply({ embeds: [embed] });
             } catch (error) {
                 console.error(error);
@@ -150,22 +136,17 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        // 🟢 指令 3：/更新資料 (所有人可用)
         if (cmd === '更新資料') {
-            const modal = new ModalBuilder()
-                .setCustomId('modal_update_data')
-                .setTitle('更新遊戲資料');
-
+            const modal = new ModalBuilder().setCustomId('modal_update_data').setTitle('更新遊戲資料');
             const q1 = new TextInputBuilder().setCustomId('update_name').setLabel("新遊戲名稱 (若無更改請填原名)").setStyle(TextInputStyle.Short);
             const q2 = new TextInputBuilder().setCustomId('update_level').setLabel("目前最新等級").setStyle(TextInputStyle.Short);
-            
             modal.addComponents(new ActionRowBuilder().addComponents(q1), new ActionRowBuilder().addComponents(q2));
             return interaction.showModal(modal);
         }
     }
 
     // ==========================================
-    // 🔘 處理按鈕點擊 (身分選擇與審核)
+    // 🔘 處理按鈕點擊
     // ==========================================
     if (interaction.isButton()) {
         if (interaction.customId === 'btn_member' || interaction.customId === 'btn_friend') {
@@ -175,60 +156,39 @@ client.on('interactionCreate', async interaction => {
                 .setPlaceholder('請選擇您的遊戲職業...')
                 .addOptions(classOptionsList);
             const row = new ActionRowBuilder().addComponents(selectMenu);
-            
-            return interaction.update({ 
-                content: isMember ? '您選擇了「公會成員」，請先選擇您的遊戲職業：' : '您選擇了「親友團」，請先選擇您的遊戲職業：', 
-                components: [row] 
-            });
+            return interaction.update({ content: isMember ? '您選擇了「公會成員」，請先選擇您的遊戲職業：' : '您選擇了「親友團」，請先選擇您的遊戲職業：', components: [row] });
         }
 
-        // 幹部點擊「審核通過」
         if (interaction.customId.startsWith('approve_')) {
             const [_, targetUserId, targetClass] = interaction.customId.split('_');
-            
             try {
-                // 1. 抓取卡片資料
                 const embed = interaction.message.embeds[0];
                 const gameName = embed.fields.find(f => f.name === '遊戲名稱')?.value || '未知';
                 const gameLevel = embed.fields.find(f => f.name === '等級')?.value || '未知';
                 const gameCode = embed.fields.find(f => f.name === '代碼')?.value || '未知';
 
-                // 2. 配發身分組
                 const member = await interaction.guild.members.fetch(targetUserId);
                 let rolesToAdd = [config.roles.guildMember];
                 if (config.roles.classes[targetClass]) rolesToAdd.push(config.roles.classes[targetClass]);
                 await member.roles.add(rolesToAdd);
 
-                // 3. 💾 寫入資料庫
                 await db.collection('members').doc(targetUserId).set({
-                    discordId: targetUserId,
-                    discordTag: member.user.tag,
-                    gameName: gameName,
-                    gameClass: targetClass,
-                    gameLevel: gameLevel,
-                    gameCode: gameCode,
-                    role: '公會成員',
-                    joinDate: admin.firestore.FieldValue.serverTimestamp()
+                    discordId: targetUserId, discordTag: member.user.tag, gameName: gameName,
+                    gameClass: targetClass, gameLevel: gameLevel, gameCode: gameCode,
+                    role: '公會成員', joinDate: admin.firestore.FieldValue.serverTimestamp()
                 }, { merge: true });
 
-                // 4. 📝 修改伺服器暱稱 (遊戲名稱 遊戲等級 遊戲職業)
                 const newNickname = `${gameName} LV${gameLevel} ${targetClass}`.substring(0, 32);
-                try {
-                    await member.setNickname(newNickname);
-                } catch (nickError) {
-                    console.log(`⚠️ 權限不足，無法修改 ${member.user.tag} 的暱稱`);
-                }
+                try { await member.setNickname(newNickname); } catch(e) { console.log(`⚠️ 權限不足，無法修改 ${member.user.tag} 的暱稱`); }
 
                 await member.send(`🎉 恭喜您！申請已通過，歡迎加入 ENDLESS！您的專屬身分組與暱稱已自動設定完畢。`);
                 return interaction.update({ content: `✅ 已批准 <@${targetUserId}>，資料已寫入且暱稱已修改。`, embeds: [], components: [] });
-
             } catch (error) {
                 console.error(error);
                 return interaction.reply({ content: '❌ 處理失敗，請確認機器人權限。', ephemeral: true });
             }
         }
 
-        // 幹部點擊「不通過」
         if (interaction.customId.startsWith('reject_')) {
             const targetUserId = interaction.customId.split('_')[1];
             const modal = new ModalBuilder().setCustomId(`modal_reject_${targetUserId}`).setTitle('填寫退回原因');
@@ -239,16 +199,14 @@ client.on('interactionCreate', async interaction => {
     }
 
     // ==========================================
-    // 🔘 處理下拉式選單 (觸發彈出表單)
+    // 🔘 處理下拉式選單
     // ==========================================
     if (interaction.isStringSelectMenu()) {
         if (interaction.customId.startsWith('select_class_')) {
             const isMember = interaction.customId === 'select_class_member';
             const selectedClass = interaction.values[0]; 
             
-            const modal = new ModalBuilder()
-                .setCustomId(`modal_${isMember ? 'member' : 'friend'}_${selectedClass}`)
-                .setTitle(isMember ? '公會成員資料填寫' : '親友團資料填寫');
+            const modal = new ModalBuilder().setCustomId(`modal_${isMember ? 'member' : 'friend'}_${selectedClass}`).setTitle(isMember ? '公會成員資料填寫' : '親友團資料填寫');
 
             if (isMember) {
                 const q1 = new TextInputBuilder().setCustomId('game_name').setLabel("遊戲名稱").setStyle(TextInputStyle.Short);
@@ -267,8 +225,6 @@ client.on('interactionCreate', async interaction => {
     // 🔘 處理表單送出 (Modal Submit)
     // ==========================================
     if (interaction.isModalSubmit()) {
-        
-        // 📝 提交公會成員申請
         if (interaction.customId.startsWith('modal_member_')) {
             const gameClass = interaction.customId.split('_')[2]; 
             const name = interaction.fields.getTextInputValue('game_name');
@@ -277,8 +233,7 @@ client.on('interactionCreate', async interaction => {
 
             const channel = client.channels.cache.get(config.channels.approval);
             if (channel) {
-                const embed = new EmbedBuilder()
-                    .setTitle('🛡️ 新的公會成員申請')
+                const embed = new EmbedBuilder().setTitle('🛡️ 新的公會成員申請')
                     .addFields(
                         { name: '申請人', value: `<@${interaction.user.id}>`, inline: true },
                         { name: '遊戲名稱', value: name, inline: true },
@@ -296,7 +251,6 @@ client.on('interactionCreate', async interaction => {
             return interaction.update({ content: `✅ 資料已送出審核！`, components: [] });
         }
 
-        // 📝 提交親友團申請
         if (interaction.customId.startsWith('modal_friend_')) {
             const gameClass = interaction.customId.split('_')[2];
             const nicknameInput = interaction.fields.getTextInputValue('nickname');
@@ -306,18 +260,14 @@ client.on('interactionCreate', async interaction => {
 
             try {
                 await interaction.member.roles.add(rolesToAdd);
-                
-                // 自動修改親友團暱稱 (暱稱 遊戲職業)
                 const newNickname = `${nicknameInput} ${gameClass}`.substring(0, 32);
                 try { await interaction.member.setNickname(newNickname); } catch(e) {}
-
                 return interaction.update({ content: `✅ 登記成功！已為您配發親友團與 **${gameClass}** 身分組！`, components: [] });
             } catch (error) {
                 return interaction.update({ content: '❌ 配發身分組失敗，請聯絡管理員確認權限。', components: [] });
             }
         }
 
-        // 📝 拒絕申請理由
         if (interaction.customId.startsWith('modal_reject_')) {
             const targetUserId = interaction.customId.split('_')[2];
             const reason = interaction.fields.getTextInputValue('reject_reason');
@@ -330,30 +280,22 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        // 📝 會員自主更新資料
         if (interaction.customId === 'modal_update_data') {
             const newName = interaction.fields.getTextInputValue('update_name');
             const newLevel = interaction.fields.getTextInputValue('update_level');
             const userId = interaction.user.id;
 
             try {
-                // 先去資料庫抓原本的職業資料
                 const doc = await db.collection('members').doc(userId).get();
                 if (!doc.exists) {
                     return interaction.reply({ content: '❌ 找不到您的公會成員資料，請先透過 `/解鎖權限` 申請加入！', ephemeral: true });
                 }
 
-                const userData = doc.data();
-                const gameClass = userData.gameClass;
-
-                // 更新資料庫
+                const gameClass = doc.data().gameClass;
                 await db.collection('members').doc(userId).update({
-                    gameName: newName,
-                    gameLevel: newLevel,
-                    lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+                    gameName: newName, gameLevel: newLevel, lastUpdated: admin.firestore.FieldValue.serverTimestamp()
                 });
 
-                // 同步修改 Discord 暱稱
                 const newNickname = `${newName} LV${newLevel} ${gameClass}`.substring(0, 32);
                 try { await interaction.member.setNickname(newNickname); } catch(e) {}
 
@@ -381,4 +323,22 @@ client.on('guildMemberAdd', async member => {
     }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+// ==========================================
+// 🚀 6️⃣ 啟動機器人與終極除錯雷達
+// ==========================================
+console.log("⏳ [系統] 準備向 Discord 發出登入請求...");
+
+if (!process.env.DISCORD_TOKEN) {
+    console.error("❌ [錯誤] 系統抓不到 DISCORD_TOKEN！請確認 Render 環境變數名稱是否拼錯。");
+} else if (process.env.DISCORD_TOKEN.includes('"')) {
+    console.error("❌ [錯誤] 您的 DISCORD_TOKEN 包含了雙引號，請到 Render 後台將引號刪除！");
+}
+
+client.login(process.env.DISCORD_TOKEN)
+    .then(() => {
+        console.log("✅ [系統] 登入請求已成功送出，等待 Discord 官方伺服器回應中...");
+    })
+    .catch(error => {
+        console.error("❌ [致命錯誤] Discord 拒絕了登入連線，原因如下：");
+        console.error(error);
+    });
