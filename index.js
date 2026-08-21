@@ -113,7 +113,11 @@ client.on('interactionCreate', async interaction => {
                 new ButtonBuilder().setCustomId('btn_member').setLabel('公會成員').setStyle(ButtonStyle.Primary),
                 new ButtonBuilder().setCustomId('btn_friend').setLabel('親友團').setStyle(ButtonStyle.Success)
             );
-            return interaction.reply({ content: '歡迎來到 ENDLESS，請告訴我們，您是我們的…', components: [row], ephemeral: true });
+            
+            // 👇 換上了輕鬆俏皮版的迎新文案
+            const welcomeMessage = "🎈 **叮咚！歡迎光臨 ENDLESS！** 🎈\n終於等到你啦！為了讓你能在伺服器裡暢通無阻地跟大家聊天，請先偷偷告訴我們，你是我們的……？（點擊下方按鈕選擇身分唷！）👇";
+
+            return interaction.reply({ content: welcomeMessage, components: [row], ephemeral: true });
         }
 
         if (cmd === '查詢目前公會成員') {
