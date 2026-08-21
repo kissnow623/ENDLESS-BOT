@@ -7,6 +7,19 @@ const {
 } = require('discord.js');
 const express = require('express');
 
+const admin = require('firebase-admin');
+
+admin.initializeApp({
+  credential: admin.credential.cert({
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined,
+  })
+});
+
+const db = admin.firestore();
+console.log('Firebase Connected!');
+
 // ==========================================
 // 🔧 設定區
 // ==========================================
@@ -240,4 +253,4 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(process.env.DISCORD_TOKEN); 
