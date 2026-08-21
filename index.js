@@ -1,24 +1,30 @@
-require('dotenv').config();
+require('dotenv').config(); // ⬅️ 已修正為小寫 require
 const { 
     Client, GatewayIntentBits, Partials, ActionRowBuilder, 
     ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, 
     TextInputStyle, EmbedBuilder, REST, Routes,
-    StringSelectMenuBuilder, StringSelectMenuOptionBuilder // ⬅️ 新增下拉選單套件
+    StringSelectMenuBuilder, StringSelectMenuOptionBuilder 
 } = require('discord.js');
 const express = require('express');
 
+// ==========================================
+// 🔥 Firebase 初始化設定 (使用整坨 JSON)
+// ==========================================
 const admin = require('firebase-admin');
 
-admin.initializeApp({
-  credential: admin.credential.cert({
-    projectId: process.env.FIREBASE_PROJECT_ID,
-    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-    privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined,
-  })
-});
-
-const db = admin.firestore();
-console.log('Firebase Connected!');
+try {
+    // 讀取你在 Render 設定的 FIREBASE_SERVICE_ACCOUNT 變數
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+    
+    const db = admin.firestore();
+    console.log('Firebase Connected Successfully!');
+} catch (error) {
+    console.error('Firebase Connection Error: 請確認 Render 環境變數中的 JSON 格式是否正確。', error);
+}
 
 // ==========================================
 // 🔧 設定區
@@ -253,4 +259,4 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-client.login(process.env.DISCORD_TOKEN); 
+client.login(process.env.DISCORD_TOKEN);
