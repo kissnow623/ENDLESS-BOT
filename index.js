@@ -328,15 +328,19 @@ client.on('guildMemberAdd', async member => {
 // ==========================================
 console.log("⏳ [系統] 準備向 Discord 發出登入請求...");
 
-if (!process.env.DISCORD_TOKEN) {
-    console.error("❌ [錯誤] 系統抓不到 DISCORD_TOKEN！請確認 Render 環境變數名稱是否拼錯。");
-} else if (process.env.DISCORD_TOKEN.includes('"')) {
-    console.error("❌ [錯誤] 您的 DISCORD_TOKEN 包含了雙引號，請到 Render 後台將引號刪除！");
+// 自動清除可能不小心複製到的空白鍵與換行符號
+const safeToken = process.env.DISCORD_TOKEN ? process.env.DISCORD_TOKEN.trim() : null;
+
+if (!safeToken) {
+    console.error("❌ [錯誤] 系統抓不到 DISCORD_TOKEN！");
+} else {
+    // 印出 Token 的前 4 個字母來確認格式 (正常的 Token 通常是 M 或 N 開頭)
+    console.log(`🔍 [檢查] 目前使用的 Token 前四碼為：${safeToken.substring(0, 4)}***`);
 }
 
-client.login(process.env.DISCORD_TOKEN)
+client.login(safeToken)
     .then(() => {
-        console.log("✅ [系統] 登入請求已成功送出，等待 Discord 官方伺服器回應中...");
+        console.log("✅ [系統] 登入請求已成功送出，機器人正式連線！");
     })
     .catch(error => {
         console.error("❌ [致命錯誤] Discord 拒絕了登入連線，原因如下：");
