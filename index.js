@@ -1,25 +1,23 @@
-require('dotenv').config(); // ⬅️ 已修正為小寫 require
+require('dotenv').config();
 const { 
     Client, GatewayIntentBits, Partials, ActionRowBuilder, 
     ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, 
     TextInputStyle, EmbedBuilder, REST, Routes,
-    StringSelectMenuBuilder, StringSelectMenuOptionBuilder 
+    StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
+    PermissionFlagsBits // ⬅️ 新增權限驗證套件
 } = require('discord.js');
 const express = require('express');
 
 // ==========================================
-// 🔥 Firebase 初始化設定 (使用整坨 JSON)
+// 🔥 Firebase 初始化設定
 // ==========================================
 const admin = require('firebase-admin');
 
 try {
-    // 讀取你在 Render 設定的 FIREBASE_SERVICE_ACCOUNT 變數
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount)
     });
-    
     const db = admin.firestore();
     console.log('Firebase Connected Successfully!');
 } catch (error) {
@@ -30,11 +28,12 @@ try {
 // 🔧 設定區
 // ==========================================
 const config = {
-    guildId: '1539475243733622794', 
+    // guildId 已經不需要了，因為我們要改成全域指令
     channels: {
         approval: '1539972747545808937' // 審核頻道 ID
     },
     roles: {
+        adminRoles: ['1539508532846526494', '1539959330726486036'], // ⬅️ 允許使用指令的管理員身分組
         guildMember: '1539959985797341184',
         familyFriend: '1539960787882475591',
         classes: {
@@ -54,7 +53,6 @@ const config = {
     }
 };
 
-// 用來產生下拉式選單選項的陣列
 const classOptionsList = Object.keys(config.roles.classes).map(className => 
     new StringSelectMenuOptionBuilder().setLabel(className).setValue(className)
 );
@@ -85,24 +83,39 @@ client.once('ready', async () => {
         description: '申請加入 ENDLESS 或是成為親友團'
     }];
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+    
     try {
+        // ⬅️ 改為全域註冊 (applicationCommands)，拿掉 guildId
         await rest.put(
-            Routes.applicationGuildCommands(process.env.CLIENT_ID, config.guildId),
+            Routes.applicationCommands(process.env.CLIENT_ID),
             { body: commands }
         );
-        console.log('Slash commands registered.');
+        console.log('Global Slash commands registered.');
     } catch (error) {
         console.error(error);
     }
 });
 
 // ==========================================
-// 處理所有互動 (指令、按鈕、下拉選單、表單)
+// 處理所有互動
 // ==========================================
 client.on('interactionCreate', async interaction => {
     
     // 1️⃣ 處理斜線指令
     if (interaction.isChatInputCommand() && interaction.commandName === '解鎖權限') {
+        
+        // 🛡️ 權限檢查邏輯
+        const isOwner = interaction.user.id === interaction.guild?.ownerId; // 是否為伺服器擁有者
+        const hasAdminRole = interaction.member.roles.cache.hasAny(...config.roles.adminRoles); // 是否有指定身分組
+        const hasAdminPerm = interaction.member.permissions.has(PermissionFlagsBits.Administrator); // 是否自帶管理員權限
+
+        if (!isOwner && !hasAdminRole && !hasAdminPerm) {
+            return interaction.reply({ 
+                content: '❌ 很抱歉，您沒有權限使用此指令。', 
+                ephemeral: true 
+            });
+        }
+
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('btn_member').setLabel('公會成員').setStyle(ButtonStyle.Primary),
             new ButtonBuilder().setCustomId('btn_friend').setLabel('親友團').setStyle(ButtonStyle.Success)
@@ -110,30 +123,26 @@ client.on('interactionCreate', async interaction => {
         await interaction.reply({
             content: '歡迎來到 ENDLESS，這裡是一個大家庭，請告訴我們，您是我們的…',
             components: [row],
-            ephemeral: true
+            ephemeral: true // 發送出來的按鈕也只有呼叫指令的管理員看得到
         });
     }
 
-    // 2️⃣ 處理按鈕點擊 (改成顯示下拉式選單)
+    // 2️⃣ 處理按鈕點擊
     if (interaction.isButton()) {
         if (interaction.customId === 'btn_member' || interaction.customId === 'btn_friend') {
             const isMember = interaction.customId === 'btn_member';
-            
             const selectMenu = new StringSelectMenuBuilder()
                 .setCustomId(`select_class_${isMember ? 'member' : 'friend'}`)
                 .setPlaceholder('請選擇您的遊戲職業...')
                 .addOptions(classOptionsList);
-
             const row = new ActionRowBuilder().addComponents(selectMenu);
             
-            // 更新原本的訊息，把按鈕換成下拉式選單
             await interaction.update({ 
                 content: isMember ? '您選擇了「公會成員」，請先選擇您的遊戲職業：' : '您選擇了「親友團」，請先選擇您的遊戲職業：', 
                 components: [row] 
             });
         }
 
-        // 審核按鈕：通過
         if (interaction.customId.startsWith('approve_')) {
             const [_, targetUserId, targetClass] = interaction.customId.split('_');
             try {
@@ -149,7 +158,6 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        // 審核按鈕：拒絕 (彈出退回理由表單)
         if (interaction.customId.startsWith('reject_')) {
             const targetUserId = interaction.customId.split('_')[1];
             const modal = new ModalBuilder()
@@ -162,13 +170,12 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // 3️⃣ 處理下拉式選單選取 (觸發彈出表單)
+    // 3️⃣ 處理下拉式選單選取
     if (interaction.isStringSelectMenu()) {
         if (interaction.customId.startsWith('select_class_')) {
             const isMember = interaction.customId === 'select_class_member';
-            const selectedClass = interaction.values[0]; // 取得選單中選擇的職業
+            const selectedClass = interaction.values[0]; 
             
-            // 我們把選擇的職業暫存到表單的 customId 裡面，例如 modal_member_主教
             const modal = new ModalBuilder()
                 .setCustomId(`modal_${isMember ? 'member' : 'friend'}_${selectedClass}`)
                 .setTitle(isMember ? '公會成員資料填寫' : '親友團資料填寫');
@@ -186,18 +193,14 @@ client.on('interactionCreate', async interaction => {
                 const q1 = new TextInputBuilder().setCustomId('nickname').setLabel("暱稱").setStyle(TextInputStyle.Short);
                 modal.addComponents(new ActionRowBuilder().addComponents(q1));
             }
-            
-            // 彈出表單
             await interaction.showModal(modal);
         }
     }
 
     // 4️⃣ 處理表單送出
     if (interaction.isModalSubmit()) {
-        
-        // 公會成員表單送出
         if (interaction.customId.startsWith('modal_member_')) {
-            const gameClass = interaction.customId.split('_')[2]; // 從 customId 抓回剛剛選的職業
+            const gameClass = interaction.customId.split('_')[2]; 
             const name = interaction.fields.getTextInputValue('game_name');
             const level = interaction.fields.getTextInputValue('game_level');
             const code = interaction.fields.getTextInputValue('game_code');
@@ -221,12 +224,9 @@ client.on('interactionCreate', async interaction => {
                 );
                 await channel.send({ embeds: [embed], components: [row] });
             }
-            
-            // 更新互動狀態，清掉下拉選單
             await interaction.update({ content: `✅ 您的資料 (職業：${gameClass}) 已送出審核，請留意後續私訊通知！`, components: [] });
         }
 
-        // 親友團表單送出
         if (interaction.customId.startsWith('modal_friend_')) {
             const gameClass = interaction.customId.split('_')[2];
             const nickname = interaction.fields.getTextInputValue('nickname');
@@ -236,14 +236,12 @@ client.on('interactionCreate', async interaction => {
 
             try {
                 await interaction.member.roles.add(rolesToAdd);
-                // 更新互動狀態，清掉下拉選單
                 await interaction.update({ content: `✅ 登記成功！已為您配發親友團與 **${gameClass}** 身分組！`, components: [] });
             } catch (error) {
                 await interaction.update({ content: '❌ 配發身分組失敗，請聯絡管理員確認權限。', components: [] });
             }
         }
 
-        // 拒絕理由表單送出
         if (interaction.customId.startsWith('modal_reject_')) {
             const targetUserId = interaction.customId.split('_')[2];
             const reason = interaction.fields.getTextInputValue('reject_reason');
