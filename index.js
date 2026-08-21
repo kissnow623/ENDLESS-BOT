@@ -7,28 +7,34 @@ const {
     PermissionFlagsBits 
 } = require('discord.js');
 const express = require('express');
-
-// ==========================================
-// 🔥 Firebase 初始化設定
-// ==========================================
 const admin = require('firebase-admin');
 
+// ==========================================
+// 1️⃣ Firebase 驗證與初始化 (嚴謹版與 Emoji 日誌)
+// ==========================================
+let serviceAccount;
 try {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
-    });
-    const db = admin.firestore();
-    console.log('Firebase Connected Successfully!');
+    // 讀取你在 Render 設定的 FIREBASE_SERVICE_ACCOUNT
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 } catch (error) {
-    console.error('Firebase Connection Error: 請確認 Render 環境變數中的 JSON 格式是否正確。', error);
+    console.error("❌ Firebase 金鑰解析失敗！請確認 Render 環境變數 (FIREBASE_SERVICE_ACCOUNT) 格式是否正確。");
+    process.exit(1); // 發生致命錯誤，直接終止應用程式
 }
 
+if (serviceAccount && !admin.apps.length) {
+    admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+    });
+    console.log("✅ Firebase Firestore 連線成功！");
+}
+
+const db = admin.firestore(); // 宣告全域共用的資料庫變數
+
 // ==========================================
-// 🔧 設定區
+// 🔧 2️⃣ 參數設定區
 // ==========================================
 const config = {
-    guildId: '1539475243733622794', // ⬅️ 伺服器 ID 加回來了，這樣指令才會瞬間出現！
+    guildId: '1539475243733622794', // 伺服器專屬指令綁定
     channels: {
         approval: '1539972747545808937' // 審核頻道 ID
     },
@@ -58,18 +64,20 @@ const classOptionsList = Object.keys(config.roles.classes).map(className =>
 );
 
 // ==========================================
-// 🌐 建立 Express 伺服器
+// 🌐 3️⃣ 建立 Express 伺服器 (保持喚醒機制)
 // ==========================================
 const app = express();
 app.get('/', (req, res) => {
-    res.send('Artale ENDLESS-BOT is running!');
+    res.send('✅ Artale ENDLESS-BOT is running online!');
 });
-app.listen(process.env.PORT || 3000, () => {
-    console.log('Web server is running and ready for UptimeRobot.');
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`🌐 網頁伺服器已啟動於 Port ${PORT} (等待 UptimeRobot 喚醒)`);
 });
 
 // ==========================================
-// 🤖 建立 Discord Client
+// 🤖 4️⃣ 建立 Discord Client 與指令註冊
 // ==========================================
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
@@ -77,7 +85,7 @@ const client = new Client({
 });
 
 client.once('ready', async () => {
-    console.log(`Logged in as ${client.user.tag}!`);
+    console.log(`🤖 機器人登入成功：${client.user.tag}!`);
     const commands = [{
         name: '解鎖權限',
         description: '申請加入 ENDLESS 或是成為親友團'
@@ -85,35 +93,29 @@ client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     
     try {
-        // ⬅️ 改回伺服器專屬指令 (applicationGuildCommands)，指令會瞬間同步！
         await rest.put(
             Routes.applicationGuildCommands(process.env.CLIENT_ID, config.guildId),
             { body: commands }
         );
-        console.log('Guild Slash commands registered.');
+        console.log('✅ 伺服器專屬斜線指令 (Guild Commands) 註冊完成！');
     } catch (error) {
-        console.error(error);
+        console.error('❌ 指令註冊失敗：', error);
     }
 });
 
 // ==========================================
-// 處理所有互動
+// 處理所有互動 (指令、按鈕、下拉選單、表單)
 // ==========================================
 client.on('interactionCreate', async interaction => {
     
-    // 1️⃣ 處理斜線指令
+    // 處理斜線指令
     if (interaction.isChatInputCommand() && interaction.commandName === '解鎖權限') {
-        
-        // 🛡️ 權限檢查邏輯 (伺服器擁有者 或 擁有管理員身分組)
         const isOwner = interaction.user.id === interaction.guild?.ownerId; 
         const hasAdminRole = interaction.member.roles.cache.hasAny(...config.roles.adminRoles); 
         const hasAdminPerm = interaction.member.permissions.has(PermissionFlagsBits.Administrator); 
 
         if (!isOwner && !hasAdminRole && !hasAdminPerm) {
-            return interaction.reply({ 
-                content: '❌ 很抱歉，您沒有權限使用此指令。', 
-                ephemeral: true 
-            });
+            return interaction.reply({ content: '❌ 很抱歉，您沒有權限使用此指令。', ephemeral: true });
         }
 
         const row = new ActionRowBuilder().addComponents(
@@ -127,7 +129,7 @@ client.on('interactionCreate', async interaction => {
         });
     }
 
-    // 2️⃣ 處理按鈕點擊
+    // 處理按鈕點擊
     if (interaction.isButton()) {
         if (interaction.customId === 'btn_member' || interaction.customId === 'btn_friend') {
             const isMember = interaction.customId === 'btn_member';
@@ -154,7 +156,7 @@ client.on('interactionCreate', async interaction => {
                 await member.send(`🎉 恭喜您！您的申請已通過，歡迎正式加入 ENDLESS 大家庭！我們已為您配發公會成員及職業身分組。`);
                 await interaction.update({ content: `✅ 已批准 <@${targetUserId}> 的加入申請。`, embeds: [], components: [] });
             } catch (error) {
-                await interaction.reply({ content: '無法配發身分組或發送私訊，請確認機器人權限。', ephemeral: true });
+                await interaction.reply({ content: '❌ 無法配發身分組或發送私訊，請確認機器人位階是否高於該身分組。', ephemeral: true });
             }
         }
 
@@ -170,7 +172,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // 3️⃣ 處理下拉式選單選取
+    // 處理下拉式選單選取
     if (interaction.isStringSelectMenu()) {
         if (interaction.customId.startsWith('select_class_')) {
             const isMember = interaction.customId === 'select_class_member';
@@ -197,7 +199,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    // 4️⃣ 處理表單送出
+    // 處理表單送出
     if (interaction.isModalSubmit()) {
         if (interaction.customId.startsWith('modal_member_')) {
             const gameClass = interaction.customId.split('_')[2]; 
@@ -251,10 +253,28 @@ client.on('interactionCreate', async interaction => {
                 await member.send(`您好，很抱歉通知您，您在 ENDLESS 的加入申請未通過。\n**原因：** ${reason}\n\n如有任何疑問，歡迎向公會幹部詢問。`);
                 await interaction.update({ content: `❌ 已拒絕 <@${targetUserId}> 的申請。原因：${reason}`, embeds: [], components: [] });
             } catch (error) {
-                await interaction.reply({ content: '無法發送私訊給該使用者，對方可能已關閉陌生人私訊。', ephemeral: true });
+                await interaction.reply({ content: '❌ 無法發送私訊給該使用者，對方可能已關閉陌生人私訊。', ephemeral: true });
             }
         }
     }
 });
 
+// ==========================================
+// 💌 5️⃣ 處理新成員加入 (發送歡迎與指引私訊)
+// ==========================================
+client.on('guildMemberAdd', async member => {
+    try {
+        await member.send(
+            `👋 歡迎來到 **ENDLESS** 大家庭！\n\n` +
+            `為了能讓您順利瀏覽頻道與參與活動，請您前往伺服器內的任意頻道，輸入 \`/解鎖權限\` 指令。\n` +
+            `點擊後請根據您的身分（公會成員 / 親友團）填寫相關資料，送出後幹部會盡快為您審核，完成後就會自動為您配發專屬身分組喔！\n\n` +
+            `*(註：如果您在頻道內打不出指令，可以稍微等待一下或是重新開啟 Discord APP)*`
+        );
+        console.log(`✅ 已成功發送歡迎私訊給新成員：${member.user.tag}`);
+    } catch (error) {
+        console.log(`⚠️ 無法發送私訊給：${member.user.tag} (對方可能關閉了伺服器陌生人私訊功能)`);
+    }
+});
+
+// 啟動機器人
 client.login(process.env.DISCORD_TOKEN);
