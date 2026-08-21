@@ -115,9 +115,7 @@ client.on('interactionCreate', async interaction => {
             );
             
             // 👇 換上了輕鬆俏皮版的迎新文案
-            const welcomeMessage = "🎈 **叮咚！歡迎光臨 ENDLESS！** 🎈\n終於等到你啦！為了讓你能在伺服器裡暢通無阻地跟大家聊天，請先偷偷告訴我們，你是我們的……？（點擊下方按鈕選擇身分唷！）👇";
-
-            return interaction.reply({ content: welcomeMessage, components: [row], ephemeral: true });
+            const welcomeMessage = "🎈 **叮咚！歡迎光臨 ENDLESS！** 🎈\n終於等到你啦！為了讓你能在伺服器裡暢通無阻地跟大家聊天，請先偷偷告訴我們，你是我們的……？\n（點擊下方按鈕選擇身分唷！）👇";
         }
 
         if (cmd === '查詢目前公會成員') {
