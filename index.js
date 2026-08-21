@@ -77,7 +77,6 @@ client.on('debug', info => console.log(`[DJS 連線追蹤] ${info}`));
 client.on('warn', info => console.log(`[DJS 警告] ${info}`));
 client.on('error', error => console.error(`[DJS 錯誤]`, error));
 
-// 修正：使用 clientReady 取代舊版 ready 事件
 client.once('clientReady', async () => {
     console.log(`🤖 機器人登入成功：${client.user.tag}!`);
     const commands = [
@@ -99,6 +98,7 @@ client.once('clientReady', async () => {
 // ==========================================
 client.on('interactionCreate', async interaction => {
     
+    // 🔘 斜線指令
     if (interaction.isChatInputCommand()) {
         const cmd = interaction.commandName;
         const isOwner = interaction.user.id === interaction.guild?.ownerId; 
@@ -115,7 +115,7 @@ client.on('interactionCreate', async interaction => {
                 new ButtonBuilder().setCustomId('btn_friend').setLabel('親友團').setStyle(ButtonStyle.Success)
             );
             const welcomeMessage = "🎈 **叮咚！歡迎光臨 ENDLESS！** 🎈\n終於等到你啦！為了讓你能在伺服器裡暢通無阻地跟大家聊天，請先偷偷告訴我們，你是我們的……？（點擊下方按鈕選擇身分唷！）👇";
-            // 🌟 保持公開，這會成為頻道裡永久的迎新面板
+            // 🌟 發送公開面板，不加 ephemeral
             return interaction.reply({ content: welcomeMessage, components: [row] });
         }
 
@@ -143,12 +143,12 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
+    // 🔘 按鈕點擊
     if (interaction.isButton()) {
         if (interaction.customId === 'btn_member' || interaction.customId === 'btn_friend') {
             const isMember = interaction.customId === 'btn_member';
             const selectMenu = new StringSelectMenuBuilder().setCustomId(`select_class_${isMember ? 'member' : 'friend'}`).setPlaceholder('請選擇您的遊戲職業...').addOptions(classOptionsList);
-            
-            // 🌟 關鍵修復：改用 reply + ephemeral，讓下拉選單僅限點擊者可見，不破壞公開面板！
+            // 🌟 關鍵：用 ephemeral 彈出下拉選單，不蓋掉公開面板
             return interaction.reply({ 
                 content: isMember ? '您選擇了「公會成員」，請選擇職業：' : '您選擇了「親友團」，請選擇職業：', 
                 components: [new ActionRowBuilder().addComponents(selectMenu)],
@@ -159,8 +159,7 @@ client.on('interactionCreate', async interaction => {
         if (interaction.customId.startsWith('approve_')) {
             const [_, targetUserId, targetClass] = interaction.customId.split('_');
             try {
-                // 🌟 爭取時間魔法：告訴 Discord 正在處理中，破解 3 秒限制
-                await interaction.deferUpdate(); 
+                await interaction.deferUpdate(); // 爭取 3 秒處理時間
                 
                 const embed = interaction.message.embeds[0];
                 const gameName = embed.fields.find(f => f.name === '遊戲名稱')?.value || '未知';
@@ -178,11 +177,12 @@ client.on('interactionCreate', async interaction => {
                 }, { merge: true });
 
                 const newNickname = `［${gameName}］☀️［${targetClass}］`.substring(0, 32);
-                try { await member.setNickname(newNickname); } catch(e) {}
+                try { await member.setNickname(newNickname); } 
+                catch(e) { await member.send(`⚠️ 溫馨提醒：因為您的權限位階較高，機器人無法幫您自動改名，請手動修改為：**${newNickname}**`); }
 
                 await member.send(`🎉 恭喜！申請已通過，歡迎加入 ENDLESS！`);
                 return interaction.editReply({ content: `✅ 已批准 <@${targetUserId}>`, embeds: [], components: [] });
-            } catch (error) { return interaction.followUp({ content: '❌ 處理失敗，請確認機器人權限。', ephemeral: true }); }
+            } catch (error) { return interaction.followUp({ content: '❌ 處理失敗，請確認權限。', ephemeral: true }); }
         }
 
         if (interaction.customId.startsWith('reject_')) {
@@ -194,6 +194,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
+    // 🔘 下拉式選單
     if (interaction.isStringSelectMenu()) {
         if (interaction.customId.startsWith('select_class_')) {
             const isMember = interaction.customId === 'select_class_member';
@@ -213,6 +214,7 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
+    // 🔘 彈出式表單提交
     if (interaction.isModalSubmit()) {
         if (interaction.customId.startsWith('modal_member_')) {
             const gameClass = interaction.customId.split('_')[2]; 
@@ -221,9 +223,7 @@ client.on('interactionCreate', async interaction => {
             const code = interaction.fields.getTextInputValue('game_code');
             
             try {
-                // 🌟 爭取時間魔法
                 await interaction.deferUpdate(); 
-                
                 const channel = await client.channels.fetch(config.channels.approval);
                 if (channel) {
                     const embed = new EmbedBuilder().setTitle('🛡️ 新成員申請').addFields(
@@ -248,15 +248,14 @@ client.on('interactionCreate', async interaction => {
             const nicknameInput = interaction.fields.getTextInputValue('nickname');
             
             try {
-                // 🌟 爭取時間魔法
                 await interaction.deferUpdate(); 
-
                 let rolesToAdd = [config.roles.familyFriend];
                 if (config.roles.classes[gameClass]) rolesToAdd.push(config.roles.classes[gameClass]);
                 await interaction.member.roles.add(rolesToAdd);
                 
                 const newNickname = `［${nicknameInput}］🌙［${gameClass}］`.substring(0, 32);
-                try { await interaction.member.setNickname(newNickname); } catch(e) {}
+                try { await interaction.member.setNickname(newNickname); } 
+                catch(e) { await interaction.member.send(`⚠️ 溫馨提醒：因為您的權限位階較高，機器人無法幫您自動改名，請手動修改為：**${newNickname}**`); }
                 
                 return interaction.editReply({ content: `✅ 登記成功！`, components: [] });
             } catch (error) { return interaction.editReply({ content: '❌ 處理失敗', components: [] }); }
@@ -277,177 +276,18 @@ client.on('interactionCreate', async interaction => {
             const newName = interaction.fields.getTextInputValue('update_name');
             const newLevel = interaction.fields.getTextInputValue('update_level');
             try {
-                // 🌟 因為這是從指令呼叫的，使用 deferReply 爭取時間
                 await interaction.deferReply({ ephemeral: true }); 
-                
                 const doc = await db.collection('members').doc(interaction.user.id).get();
                 if (!doc.exists) return interaction.editReply({ content: '❌ 找不到您的資料' });
                 
                 const gameClass = doc.data().gameClass;
                 await db.collection('members').doc(interaction.user.id).update({ gameName: newName, gameLevel: newLevel, lastUpdated: admin.firestore.FieldValue.serverTimestamp() });
                 const newNickname = `［${newName}］☀️［${gameClass}］`.substring(0, 32);
-                try { await interaction.member.setNickname(newNickname); } catch(e) {}
+                try { await interaction.member.setNickname(newNickname); } 
+                catch(e) { await interaction.member.send(`⚠️ 溫馨提醒：請手動將暱稱修改為：**${newNickname}**`); }
                 
                 return interaction.editReply({ content: `✅ 資料更新成功！` });
             } catch (error) { return interaction.editReply({ content: '❌ 更新失敗' }); }
-        }
-    }
-});
-
-        if (cmd === '更新資料') {
-            const modal = new ModalBuilder().setCustomId('modal_update_data').setTitle('更新遊戲資料');
-            const q1 = new TextInputBuilder().setCustomId('update_name').setLabel("新遊戲名稱 (若無更改請填原名)").setStyle(TextInputStyle.Short);
-            const q2 = new TextInputBuilder().setCustomId('update_level').setLabel("目前最新等級").setStyle(TextInputStyle.Short);
-            modal.addComponents(new ActionRowBuilder().addComponents(q1), new ActionRowBuilder().addComponents(q2));
-            return interaction.showModal(modal);
-        }
-    }
-
-    if (interaction.isButton()) {
-        if (interaction.customId === 'btn_member' || interaction.customId === 'btn_friend') {
-            const isMember = interaction.customId === 'btn_member';
-            const selectMenu = new StringSelectMenuBuilder().setCustomId(`select_class_${isMember ? 'member' : 'friend'}`).setPlaceholder('請選擇您的遊戲職業...').addOptions(classOptionsList);
-            return interaction.update({ content: isMember ? '您選擇了「公會成員」，請選擇職業：' : '您選擇了「親友團」，請選擇職業：', components: [new ActionRowBuilder().addComponents(selectMenu)] });
-        }
-
-        // 幹部審核通過
-        if (interaction.customId.startsWith('approve_')) {
-            const [_, targetUserId, targetClass] = interaction.customId.split('_');
-            try {
-                const embed = interaction.message.embeds[0];
-                const gameName = embed.fields.find(f => f.name === '遊戲名稱')?.value || '未知';
-                const gameLevel = embed.fields.find(f => f.name === '等級')?.value || '未知';
-                const gameCode = embed.fields.find(f => f.name === '代碼')?.value || '未知';
-
-                const member = await interaction.guild.members.fetch(targetUserId);
-                let rolesToAdd = [config.roles.guildMember];
-                if (config.roles.classes[targetClass]) rolesToAdd.push(config.roles.classes[targetClass]);
-                await member.roles.add(rolesToAdd);
-
-                await db.collection('members').doc(targetUserId).set({
-                    discordId: targetUserId, discordTag: member.user.tag, gameName: gameName,
-                    gameClass: targetClass, gameLevel: gameLevel, gameCode: gameCode, role: '公會成員', joinDate: admin.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
-
-                // 📝 變更為公會成員專屬格式：［遊戲名稱］☀️［職業］
-                const newNickname = `［${gameName}］☀️［${targetClass}］`.substring(0, 32);
-                try { await member.setNickname(newNickname); } 
-                catch(e) { console.log(`⚠️ 無法修改 ${member.user.tag} 的暱稱 (位階過高或擁有者)`); }
-
-                await member.send(`🎉 恭喜！申請已通過，歡迎加入 ENDLESS！`);
-                return interaction.update({ content: `✅ 已批准 <@${targetUserId}>`, embeds: [], components: [] });
-            } catch (error) { return interaction.reply({ content: '❌ 處理失敗，請確認機器人權限。', ephemeral: true }); }
-        }
-
-        // 幹部審核拒絕
-        if (interaction.customId.startsWith('reject_')) {
-            const targetUserId = interaction.customId.split('_')[1];
-            const modal = new ModalBuilder().setCustomId(`modal_reject_${targetUserId}`).setTitle('填寫退回原因');
-            const reasonInput = new TextInputBuilder().setCustomId('reject_reason').setLabel("原因").setStyle(TextInputStyle.Paragraph).setRequired(true);
-            modal.addComponents(new ActionRowBuilder().addComponents(reasonInput));
-            return interaction.showModal(modal);
-        }
-    }
-
-    if (interaction.isStringSelectMenu()) {
-        if (interaction.customId.startsWith('select_class_')) {
-            const isMember = interaction.customId === 'select_class_member';
-            const selectedClass = interaction.values[0]; 
-            const modal = new ModalBuilder().setCustomId(`modal_${isMember ? 'member' : 'friend'}_${selectedClass}`).setTitle(isMember ? '公會成員資料' : '親友團資料');
-
-            if (isMember) {
-                modal.addComponents(
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('game_name').setLabel("遊戲名稱").setStyle(TextInputStyle.Short)),
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('game_level').setLabel("遊戲等級 (純數字)").setStyle(TextInputStyle.Short)),
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('game_code').setLabel("遊戲代碼").setStyle(TextInputStyle.Short))
-                );
-            } else {
-                modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('nickname').setLabel("暱稱").setStyle(TextInputStyle.Short)));
-            }
-            return interaction.showModal(modal);
-        }
-    }
-
-    if (interaction.isModalSubmit()) {
-        
-        // 提交公會成員申請 (修復抓不到頻道的問題)
-        if (interaction.customId.startsWith('modal_member_')) {
-            const gameClass = interaction.customId.split('_')[2]; 
-            const name = interaction.fields.getTextInputValue('game_name');
-            const level = interaction.fields.getTextInputValue('game_level');
-            const code = interaction.fields.getTextInputValue('game_code');
-            
-            try {
-                // 強制抓取伺服器頻道，避免快取遺失
-                const channel = await client.channels.fetch(config.channels.approval);
-                if (channel) {
-                    const embed = new EmbedBuilder().setTitle('🛡️ 新成員申請').addFields(
-                        { name: '申請人', value: `<@${interaction.user.id}>`, inline: true },
-                        { name: '遊戲名稱', value: name, inline: true }, { name: '等級', value: level, inline: true },
-                        { name: '職業', value: gameClass, inline: true }, { name: '代碼', value: code, inline: true }
-                    ).setColor('#0099ff');
-                    const row = new ActionRowBuilder().addComponents(
-                        new ButtonBuilder().setCustomId(`approve_${interaction.user.id}_${gameClass}`).setLabel('審核通過').setStyle(ButtonStyle.Success),
-                        new ButtonBuilder().setCustomId(`reject_${interaction.user.id}`).setLabel('不通過').setStyle(ButtonStyle.Danger)
-                    );
-                    await channel.send({ embeds: [embed], components: [row] });
-                    return interaction.update({ content: `✅ 資料已送出，請靜候幹部審核！`, components: [] });
-                }
-            } catch (error) {
-                console.error('❌ 傳送審核表單失敗：', error);
-                return interaction.update({ content: `❌ 傳送失敗，請確認審核頻道設定是否正確。`, components: [] });
-            }
-        }
-
-        // 提交親友團申請
-        if (interaction.customId.startsWith('modal_friend_')) {
-            const gameClass = interaction.customId.split('_')[2];
-            const nicknameInput = interaction.fields.getTextInputValue('nickname');
-            let rolesToAdd = [config.roles.familyFriend];
-            if (config.roles.classes[gameClass]) rolesToAdd.push(config.roles.classes[gameClass]);
-            
-            try {
-                await interaction.member.roles.add(rolesToAdd);
-                
-                // 📝 變更為親友團專屬格式：［暱稱］🌙［職業］
-                const newNickname = `［${nicknameInput}］🌙［${gameClass}］`.substring(0, 32);
-                try { await interaction.member.setNickname(newNickname); } 
-                catch(e) { console.log(`⚠️ 無法修改 ${interaction.user.tag} 的暱稱 (位階過高或擁有者)`); }
-                
-                return interaction.update({ content: `✅ 登記成功！`, components: [] });
-            } catch (error) { return interaction.update({ content: '❌ 身分組發送失敗', components: [] }); }
-        }
-
-        // 拒絕理由送出
-        if (interaction.customId.startsWith('modal_reject_')) {
-            const targetUserId = interaction.customId.split('_')[2];
-            const reason = interaction.fields.getTextInputValue('reject_reason');
-            try {
-                const member = await interaction.guild.members.fetch(targetUserId);
-                await member.send(`您的申請未通過。\n**原因：** ${reason}`);
-                return interaction.update({ content: `❌ 已拒絕`, embeds: [], components: [] });
-            } catch (error) { return interaction.reply({ content: '❌ 無法發送私訊。', ephemeral: true }); }
-        }
-
-        // 成員自主更新資料
-        if (interaction.customId === 'modal_update_data') {
-            const newName = interaction.fields.getTextInputValue('update_name');
-            const newLevel = interaction.fields.getTextInputValue('update_level');
-            try {
-                const doc = await db.collection('members').doc(interaction.user.id).get();
-                if (!doc.exists) return interaction.reply({ content: '❌ 找不到您的資料', ephemeral: true });
-                
-                const gameClass = doc.data().gameClass;
-                await db.collection('members').doc(interaction.user.id).update({ 
-                    gameName: newName, gameLevel: newLevel, lastUpdated: admin.firestore.FieldValue.serverTimestamp() 
-                });
-                
-                // 📝 更新時，同步套用公會成員格式
-                const newNickname = `［${newName}］☀️［${gameClass}］`.substring(0, 32);
-                try { await interaction.member.setNickname(newNickname); } catch(e) {}
-                
-                return interaction.reply({ content: `✅ 資料更新成功！`, ephemeral: true });
-            } catch (error) { return interaction.reply({ content: '❌ 更新失敗', ephemeral: true }); }
         }
     }
 });
