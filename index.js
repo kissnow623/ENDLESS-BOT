@@ -4,7 +4,7 @@ const {
     ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, 
     TextInputStyle, EmbedBuilder, REST, Routes,
     StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
-    PermissionFlagsBits // ⬅️ 新增權限驗證套件
+    PermissionFlagsBits 
 } = require('discord.js');
 const express = require('express');
 
@@ -28,12 +28,12 @@ try {
 // 🔧 設定區
 // ==========================================
 const config = {
-    // guildId 已經不需要了，因為我們要改成全域指令
+    guildId: '1539475243733622794', // ⬅️ 伺服器 ID 加回來了，這樣指令才會瞬間出現！
     channels: {
         approval: '1539972747545808937' // 審核頻道 ID
     },
     roles: {
-        adminRoles: ['1539508532846526494', '1539959330726486036'], // ⬅️ 允許使用指令的管理員身分組
+        adminRoles: ['1539508532846526494', '1539959330726486036'], // 允許使用指令的管理員身分組
         guildMember: '1539959985797341184',
         familyFriend: '1539960787882475591',
         classes: {
@@ -85,12 +85,12 @@ client.once('ready', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     
     try {
-        // ⬅️ 改為全域註冊 (applicationCommands)，拿掉 guildId
+        // ⬅️ 改回伺服器專屬指令 (applicationGuildCommands)，指令會瞬間同步！
         await rest.put(
-            Routes.applicationCommands(process.env.CLIENT_ID),
+            Routes.applicationGuildCommands(process.env.CLIENT_ID, config.guildId),
             { body: commands }
         );
-        console.log('Global Slash commands registered.');
+        console.log('Guild Slash commands registered.');
     } catch (error) {
         console.error(error);
     }
@@ -104,10 +104,10 @@ client.on('interactionCreate', async interaction => {
     // 1️⃣ 處理斜線指令
     if (interaction.isChatInputCommand() && interaction.commandName === '解鎖權限') {
         
-        // 🛡️ 權限檢查邏輯
-        const isOwner = interaction.user.id === interaction.guild?.ownerId; // 是否為伺服器擁有者
-        const hasAdminRole = interaction.member.roles.cache.hasAny(...config.roles.adminRoles); // 是否有指定身分組
-        const hasAdminPerm = interaction.member.permissions.has(PermissionFlagsBits.Administrator); // 是否自帶管理員權限
+        // 🛡️ 權限檢查邏輯 (伺服器擁有者 或 擁有管理員身分組)
+        const isOwner = interaction.user.id === interaction.guild?.ownerId; 
+        const hasAdminRole = interaction.member.roles.cache.hasAny(...config.roles.adminRoles); 
+        const hasAdminPerm = interaction.member.permissions.has(PermissionFlagsBits.Administrator); 
 
         if (!isOwner && !hasAdminRole && !hasAdminPerm) {
             return interaction.reply({ 
@@ -123,7 +123,7 @@ client.on('interactionCreate', async interaction => {
         await interaction.reply({
             content: '歡迎來到 ENDLESS，這裡是一個大家庭，請告訴我們，您是我們的…',
             components: [row],
-            ephemeral: true // 發送出來的按鈕也只有呼叫指令的管理員看得到
+            ephemeral: true 
         });
     }
 
