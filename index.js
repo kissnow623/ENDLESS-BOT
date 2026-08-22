@@ -11,7 +11,7 @@ const {
     ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, 
     TextInputStyle, EmbedBuilder, REST, Routes,
     StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
-    PermissionFlagsBits, ApplicationCommandOptionType // 🌟 新增選項工具
+    PermissionFlagsBits, ApplicationCommandOptionType 
 } = require('discord.js');
 const express = require('express');
 const admin = require('firebase-admin');
@@ -59,12 +59,18 @@ const classOptionsList = Object.keys(config.roles.classes).map(className =>
     new StringSelectMenuOptionBuilder().setLabel(className).setValue(className)
 );
 
+// 🌟 升級版：10 種超有活力的隨機迎新廣播文案
 const welcomeMessages = [
     (userId) => `🎉 掌聲加尖叫！讓我們熱烈歡迎 <@${userId}> 閃亮登場！✨ 大家快來跟他打聲招呼，準備一起展開在 ENDLESS 的大冒險啦！🚀`,
     (userId) => `🍻 吧台的小夥伴請注意，我們有新客人啦！歡迎 <@${userId}> 踏入 ENDLESS 酒館！趕緊拉張椅子坐下，今晚我們不醉不歸（或是打王打到天亮）！🍖`,
     (userId) => `🔮 *一陣神秘的魔法光芒閃過...* 哇！原來是 <@${userId}> 被傳送到 ENDLESS 大家庭啦！很高興遇見你，未來的日子請多指教喔！🥰`,
     (userId) => `🎈 叮咚！ENDLESS 迎來了一位超酷的新夥伴！<@${userId}> 已經順利解鎖全部頻道囉～大家快把最熱情的貼圖刷起來，讓他感受我們的溫暖吧！🔥🔥`,
-    (userId) => `⚔️ 號角響起！勇敢的冒險者 <@${userId}> 正式加入 ENDLESS 的行列！我們又多了一位強力的好隊友啦！準備好一起挑戰極限了嗎？衝呀！💪`
+    (userId) => `⚔️ 號角響起！勇敢的冒險者 <@${userId}> 正式加入 ENDLESS 的行列！我們又多了一位強力的好隊友啦！準備好一起挑戰極限了嗎？衝呀！💪`,
+    (userId) => `🌟 快看天上！是一顆閃亮的流星！不對，那是我們的新成員 <@${userId}> 降落啦！🛸 準備好跟我們一起在 ENDLESS 創造奇蹟了嗎？`,
+    (userId) => `🎶 噔噔噔噔～自帶專屬 BGM 的 <@${userId}> 華麗登場！🎤 大家快把螢光棒揮起來，歡迎我們 ENDLESS 的最新力作！`,
+    (userId) => `🍰 新鮮出爐的熱騰騰新成員來囉！歡迎 <@${userId}> 加入 ENDLESS！🤤 頻道裡隨便逛，遇到打不過的王記得大喊救命，我們隨傳隨到！`,
+    (userId) => `🎮 玩家 ［ <@${userId}> ］ 已成功連接至 ENDLESS 伺服器！✅ 裝備檢查完畢，藥水確認帶齊，馬上開始我們無盡的冒險旅程吧！`,
+    (userId) => `🏆 號外號外！據說實力超強、顏值超高的 <@${userId}> 選擇加入了 ENDLESS！😎 各位小夥伴快出來排隊歡迎，以後打寶掉寶率就靠你加持啦！✨`
 ];
 
 // ==========================================
@@ -101,9 +107,9 @@ client.once('clientReady', async () => {
     console.log(`🤖 機器人登入成功：${client.user.tag}!`);
     const commands = [
         { name: '解鎖權限', description: '發布加入 ENDLESS 或是成為親友團的申請面板' },
-        { name: '查詢目前公會成員', description: '查詢公會成員列表與總人數 (僅限管理員)' },
+        { name: '查詢目前公會成員', description: '查詢公會成員列表與總人數 (僅限幹部)' },
+        { name: '查詢目前親友團', description: '查詢親友團成員列表與總人數 (僅限幹部)' },
         { name: '更新資料', description: '更新您的遊戲名稱或等級 (同步修改暱稱)' },
-        // 🌟 新增一鍵清除資料指令
         { 
             name: '清除資料', 
             description: '清除指定成員的資料庫紀錄與身分組，方便重新測試 (僅限幹部)',
@@ -171,8 +177,7 @@ client.on('interactionCreate', async interaction => {
             const hasAdminRole = interaction.member.roles.cache.hasAny(...config.roles.adminRoles); 
             const hasAdminPerm = interaction.member.permissions.has(PermissionFlagsBits.Administrator); 
 
-            // 🌟 權限阻擋包含新指令
-            if ((cmd === '解鎖權限' || cmd === '查詢目前公會成員' || cmd === '清除資料') && !isOwner && !hasAdminRole && !hasAdminPerm) {
+            if ((cmd === '解鎖權限' || cmd === '查詢目前公會成員' || cmd === '查詢目前親友團' || cmd === '清除資料') && !isOwner && !hasAdminRole && !hasAdminPerm) {
                 return interaction.reply({ content: '❌ 很抱歉，此管理指令僅限幹部使用。', ephemeral: true });
             }
 
@@ -181,7 +186,7 @@ client.on('interactionCreate', async interaction => {
                     new ButtonBuilder().setCustomId('btn_member').setLabel('公會成員').setStyle(ButtonStyle.Primary),
                     new ButtonBuilder().setCustomId('btn_friend').setLabel('親友團').setStyle(ButtonStyle.Success)
                 );
-                const welcomeMessage = "🎈 **叮咚！歡迎光臨 ENDLESS！** 🎈\n終於等到你啦！為了讓你能在伺服器裡暢通無阻地跟大家聊天，請先偷偷告訴我們，你是我們的……？（點擊下方按鈕選擇身分唷！）👇";
+                const welcomeMessage = "🎈 **叮咚！歡迎光臨 ENDLESS！** 🎈\n終於等到你啦！為了讓你能在伺服器裡暢通無阻地跟大家聊天，請先偷偷告訴我們，你是我們的……？\n（點擊下方按鈕選擇身分唷！）👇";
                 return interaction.reply({ content: welcomeMessage, components: [row] });
             }
 
@@ -200,6 +205,21 @@ client.on('interactionCreate', async interaction => {
                 } catch (error) { return interaction.editReply('❌ 查詢資料庫時發生錯誤。'); }
             }
 
+            if (cmd === '查詢目前親友團') {
+                await interaction.deferReply({ ephemeral: true }); 
+                try {
+                    const snapshot = await db.collection('members').where('role', '==', '親友團').get();
+                    if (snapshot.empty) return interaction.editReply('目前資料庫中沒有親友團紀錄。');
+                    let members = [];
+                    snapshot.forEach(doc => members.push(doc.data()));
+                    members.sort((a, b) => (a.joinDate?.toDate() || 0) - (b.joinDate?.toDate() || 0));
+                    let description = `目前親友團總人數：**${members.length}** 人\n\n**【 🌙 親友團名單 】**\n`;
+                    members.forEach((m, index) => { description += `${index + 1}. **${m.gameName}** - ${m.gameClass}\n`; });
+                    const embed = new EmbedBuilder().setTitle('🌙 ENDLESS 親友團名冊').setDescription(description.substring(0, 4000)).setColor('#FF99CC');
+                    return interaction.editReply({ embeds: [embed] });
+                } catch (error) { return interaction.editReply('❌ 查詢資料庫時發生錯誤。'); }
+            }
+
             if (cmd === '更新資料') {
                 const modal = new ModalBuilder().setCustomId('modal_update_data').setTitle('更新遊戲資料');
                 const q1 = new TextInputBuilder().setCustomId('update_name').setLabel("新遊戲名稱/暱稱 (若無更改請填原名)").setStyle(TextInputStyle.Short);
@@ -208,17 +228,12 @@ client.on('interactionCreate', async interaction => {
                 return interaction.showModal(modal);
             }
 
-            // 🌟 終極測試工具：一鍵清除資料指令
             if (cmd === '清除資料') {
                 await interaction.deferReply({ ephemeral: true });
                 const targetUser = interaction.options.getUser('目標');
                 if (!targetUser) return interaction.editReply('❌ 找不到該成員。');
-
                 try {
-                    // 1. 刪除資料庫紀錄
                     await db.collection('members').doc(targetUser.id).delete();
-                    
-                    // 2. 拔除伺服器身分組
                     const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
                     if (member) {
                         const rolesToRemove = [
@@ -226,15 +241,10 @@ client.on('interactionCreate', async interaction => {
                             config.roles.familyFriend,
                             ...Object.values(config.roles.classes)
                         ];
-                        // 嘗試拔除這些身分組 (忽略已沒有該身分組的錯誤)
                         await member.roles.remove(rolesToRemove).catch(() => {});
                     }
-                    
                     return interaction.editReply(`✅ **重置成功！**\n已完全清除 <@${targetUser.id}> 的資料庫紀錄，並拔除所有公會與職業身分組。\n(現在該帳號已回到白紙狀態，可以重新測試 /解鎖權限 囉！)`);
-                } catch (err) {
-                    console.error('❌ 清除資料失敗：', err);
-                    return interaction.editReply('❌ 清除資料失敗，請確認機器人權限是否足夠。');
-                }
+                } catch (err) { return interaction.editReply('❌ 清除資料失敗，請確認機器人權限是否足夠。'); }
             }
         }
 
@@ -250,7 +260,6 @@ client.on('interactionCreate', async interaction => {
                 });
             }
 
-            // 🛡️ 審核通過
             if (interaction.customId.startsWith('approve_')) {
                 const parts = interaction.customId.split('_');
                 const targetUserId = parts[1];
@@ -280,10 +289,7 @@ client.on('interactionCreate', async interaction => {
                     const passedMsg = `🎉 **太棒了！狂賀！** 🎉\n你的申請已經正式通過啦！歡迎成為 ENDLESS 大家庭的一份子！🥳\n現在，伺服器裡的所有專屬頻道都已經為你解鎖囉！趕快進去跟大家打個招呼、找人一起練功打王吧！衝呀～～🚀`;
                     await member.send(passedMsg).catch(() => {});
 
-                    const updatedEmbed = EmbedBuilder.from(originalEmbed)
-                        .setColor('#00FF00')
-                        .setTitle('✅ 審核已通過')
-                        .setFooter({ text: `由 ${interaction.user.tag} 批准`, iconURL: interaction.user.displayAvatarURL() });
+                    const updatedEmbed = EmbedBuilder.from(originalEmbed).setColor('#00FF00').setTitle('✅ 審核已通過').setFooter({ text: `由 ${interaction.user.tag} 批准`, iconURL: interaction.user.displayAvatarURL() });
                     await interaction.message.edit({ embeds: [updatedEmbed], components: [] });
 
                     try {
@@ -294,12 +300,9 @@ client.on('interactionCreate', async interaction => {
                         }
                     } catch (err) { console.log('⚠️ 無法發送迎新廣播：', err); }
 
-                } catch (error) { 
-                    return interaction.followUp({ content: '❌ 處理失敗，請確認機器人權限。', ephemeral: true }); 
-                }
+                } catch (error) { return interaction.followUp({ content: '❌ 處理失敗，請確認機器人權限。', ephemeral: true }); }
             }
 
-            // 🛡️ 審核拒絕
             if (interaction.customId.startsWith('reject_')) {
                 const targetUserId = interaction.customId.split('_')[1];
                 const msgId = interaction.message.id; 
@@ -314,11 +317,7 @@ client.on('interactionCreate', async interaction => {
                         { label: '✍️ 自行輸入理由...', description: '手動輸入其他原因', value: 'custom' }
                     ]);
 
-                return interaction.reply({
-                    content: '請選擇要退回該申請的原因：',
-                    components: [new ActionRowBuilder().addComponents(reasonSelect)],
-                    ephemeral: true
-                });
+                return interaction.reply({ content: '請選擇要退回該申請的原因：', components: [new ActionRowBuilder().addComponents(reasonSelect)], ephemeral: true });
             }
         }
 
@@ -374,6 +373,7 @@ client.on('interactionCreate', async interaction => {
         // 🔘 彈出式表單提交
         if (interaction.isModalSubmit()) {
             
+            // 🌟 核心修復區塊：完美的語法
             if (interaction.customId.startsWith('modal_member_')) {
                 const gameClass = interaction.customId.split('_')[2]; 
                 const name = interaction.fields.getTextInputValue('game_name');
@@ -423,9 +423,10 @@ client.on('interactionCreate', async interaction => {
 
                 try {
                     const dmChannel = await interaction.user.createDM();
-                    await interaction.editReply({ content: `✅ 第一步完成！\n\n📸 **請立刻去查看我給你的「私訊 (DM)」**，並直接把你的遊戲截圖傳送給我，才能完成最後的申請步驟喔！🏃‍♂️💨` });
+                    await interaction.editReply({ content: `✅ 第一步完成！\n\n📸 **請麻煩去查看我給你的私訊**，並直接把你的遊戲截圖傳送給我，才能完成最後的申請步驟喔！🏃‍♂️💨` });
 
-                    await dmChannel.send(`👋 嗨嗨！你剛剛填寫了 ENDLESS 的入會申請，距離加入我們只差最後一步啦！🏃‍♂️💨\n\n📸 **請在 5 分鐘內，直接將你的「角色資料截圖」傳送在這個聊天室喔！**\n*(這張帥氣的截圖會附在你的申請單上，讓公會幹部們好好認識你！)*\n\n如果不需要上傳截圖，請直接回覆文字：\`跳過\``);
+                    // 👇 就是這裡修好了反引號！
+                    await dmChannel.send(`👋 嗨嗨！你剛剛填寫了 ENDLESS 的入會申請，距離加入我們只差最後一步啦！🏃‍♂️💨\n\n📸 **請在 5 分鐘內，直接將你的「角色資料截圖」傳送在這個聊天室喔！**\n*(這張帥氣的截圖會附在你的申請單上，讓公會好好認識你！)*\n\n如果不需要上傳截圖，請直接回覆文字：\`跳過\``);
 
                     const filter = m => m.author.id === interaction.user.id;
                     const collector = dmChannel.createMessageCollector({ filter, time: 5 * 60 * 1000, max: 1 });
