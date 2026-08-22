@@ -72,19 +72,15 @@ const welcomeMessages = [
     (userId) => `🏆 號外號外！據說實力超強、顏值超高的 <@${userId}> 選擇加入了 ENDLESS！😎 各位小夥伴快出來排隊歡迎，以後打寶掉寶率就靠你加持啦！✨`
 ];
 
-// 🌟 輔助函式：產生全新格式的暱稱
+// 🌟 輔助函式：產生全新簡潔格式的暱稱
 async function updateNickname(member, gameName, roleType, classesArray) {
     const icon = roleType === '公會成員' ? '🌟' : '🌜';
     const classesStr = classesArray.join('｜');
-    let newNick = `${gameName} ${icon} ${classesStr}`;
+    let newNick = `${gameName} ${icon} ${classesStr}`; // 格式：幸運花花 🌟 黑騎士｜主教
     
-    if (newNick.length > 32) newNick = newNick.substring(0, 32); // 防止字數超過 Discord 限制
+    if (newNick.length > 32) newNick = newNick.substring(0, 32); 
     
-    try {
-        await member.setNickname(newNick);
-    } catch (e) {
-        console.log(`⚠️ 無法修改 ${member.user.tag} 的暱稱`);
-    }
+    try { await member.setNickname(newNick); } catch (e) { console.log(`⚠️ 無法修改 ${member.user.tag} 的暱稱`); }
     return newNick;
 }
 
@@ -101,17 +97,11 @@ app.listen(PORT, () => console.log(`🌐 網頁伺服器已啟動於 Port ${PORT
 // ==========================================
 const client = new Client({
     intents: [
-        GatewayIntentBits.Guilds, 
-        GatewayIntentBits.GuildMembers, 
-        GatewayIntentBits.DirectMessages,   
-        GatewayIntentBits.MessageContent    
+        GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, 
+        GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent    
     ],
     partials: [ Partials.User, Partials.GuildMember, Partials.Channel, Partials.Message ]
 });
-
-client.on('debug', info => console.log(`[DJS 連線追蹤] ${info}`));
-client.on('warn', info => console.log(`[DJS 警告] ${info}`));
-client.on('error', error => console.error(`[DJS 錯誤]`, error));
 
 client.once('clientReady', async () => {
     console.log(`🤖 機器人登入成功：${client.user.tag}!`);
@@ -120,23 +110,14 @@ client.once('clientReady', async () => {
         { name: '查詢目前公會成員', description: '查詢公會成員列表與總人數 (僅限幹部)' },
         { name: '查詢目前親友團', description: '查詢親友團成員列表與總人數 (僅限幹部)' },
         { name: '更新資料', description: '更新您的遊戲名稱或等級 (同步修改暱稱)' },
+        { name: '刪除職業', description: '刪除您已登記的職業分身 (同步更新身分組與暱稱)' }, // 🌟 新增指令
         { 
-            name: '清除資料', 
-            description: '清除指定成員的資料庫紀錄與身分組，方便重新測試 (僅限幹部)',
+            name: '清除資料', description: '清除指定成員的資料庫紀錄與身分組 (僅限幹部)',
             options: [{ name: '目標', description: '請選擇要重置資料的成員', type: ApplicationCommandOptionType.User, required: true }]
         },
-        // 🌟 新增：自訂數量清除訊息指令
         {
-            name: '清除訊息',
-            description: '快速清除當前頻道指定數量的訊息 (僅限幹部)',
-            options: [{
-                name: '數量',
-                description: '請輸入要清除的訊息數量 (1 到 100)',
-                type: ApplicationCommandOptionType.Integer,
-                required: true,
-                min_value: 1,
-                max_value: 100
-            }]
+            name: '清除訊息', description: '快速清除當前頻道指定數量的訊息 (僅限幹部)',
+            options: [{ name: '數量', description: '請輸入要清除的訊息數量 (1 到 100)', type: ApplicationCommandOptionType.Integer, required: true, min_value: 1, max_value: 100 }]
         }
     ];
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -204,7 +185,7 @@ client.on('interactionCreate', async interaction => {
                     new ButtonBuilder().setCustomId('btn_member').setLabel('公會成員').setStyle(ButtonStyle.Primary),
                     new ButtonBuilder().setCustomId('btn_friend').setLabel('親友團').setStyle(ButtonStyle.Success)
                 );
-                const welcomeMessage = "🎈 **叮咚！歡迎光臨 ENDLESS！** 🎈\n終於等到你啦！為了讓你能在伺服器裡暢通無阻地跟大家聊天，請先偷偷告訴我們，你是我們的……？\n（點擊下方按鈕選擇身分唷！）👇";
+                const welcomeMessage = "🎈 **叮咚！歡迎光臨 ENDLESS！** 🎈\n終於等到你啦！為了讓你能在伺服器裡暢通無阻地跟大家聊天，請先偷偷告訴我們，你是我們的……？（點擊下方按鈕選擇身分唷！）👇";
                 return interaction.reply({ content: welcomeMessage, components: [row] });
             }
 
@@ -217,7 +198,6 @@ client.on('interactionCreate', async interaction => {
                     snapshot.forEach(doc => members.push(doc.data()));
                     members.sort((a, b) => parseInt(b.gameLevel) - parseInt(a.gameLevel));
                     let description = `目前公會總人數：**${members.length}** 人\n\n**【 成員等級排行榜 】**\n`;
-                    // 🌟 顯示多職業
                     members.forEach((m, index) => { 
                         const classes = m.gameClasses ? m.gameClasses.join('｜') : m.gameClass;
                         description += `${index + 1}. **${m.gameName}** (LV.${m.gameLevel}) - ${classes}\n`; 
@@ -247,10 +227,32 @@ client.on('interactionCreate', async interaction => {
 
             if (cmd === '更新資料') {
                 const modal = new ModalBuilder().setCustomId('modal_update_data').setTitle('更新遊戲資料');
-                const q1 = new TextInputBuilder().setCustomId('update_name').setLabel("新遊戲名稱/暱稱 (若無更改請填原名)").setStyle(TextInputStyle.Short);
+                // 🌟 更新表單標題
+                const q1 = new TextInputBuilder().setCustomId('update_name').setLabel("新遊戲名稱/暱稱").setStyle(TextInputStyle.Short);
                 const q2 = new TextInputBuilder().setCustomId('update_level').setLabel("目前最新等級 (親友團可不填)").setStyle(TextInputStyle.Short).setRequired(false);
                 modal.addComponents(new ActionRowBuilder().addComponents(q1), new ActionRowBuilder().addComponents(q2));
                 return interaction.showModal(modal);
+            }
+
+            // 🌟 新增：刪除職業 (解決誤選/不再玩某分身的問題)
+            if (cmd === '刪除職業') {
+                await interaction.deferReply({ ephemeral: true });
+                const doc = await db.collection('members').doc(interaction.user.id).get();
+                if (!doc.exists) return interaction.editReply('❌ 找不到您的資料，請先完成申請登記！');
+                
+                const data = doc.data();
+                let classes = data.gameClasses || (data.gameClass ? [data.gameClass] : []);
+                
+                if (classes.length === 0) return interaction.editReply('❌ 您目前沒有登記任何職業！');
+                if (classes.length === 1) return interaction.editReply('⚠️ 您目前只有登記一個主職業，無法刪除！如果想要「更換」主職業，請直接填寫新職業申請或聯繫幹部。');
+
+                const removeOptions = classes.map(c => new StringSelectMenuOptionBuilder().setLabel(c).setValue(c));
+                const selectMenu = new StringSelectMenuBuilder().setCustomId(`select_remove_class`).setPlaceholder('請選擇要刪除的職業...').addOptions(removeOptions);
+                    
+                return interaction.editReply({
+                    content: '🗑️ **請選擇您要刪除的職業分身：**\n*(注意：刪除後將會同步移除您的該職業身分組，並更新您的暱稱標籤)*',
+                    components: [new ActionRowBuilder().addComponents(selectMenu)]
+                });
             }
 
             if (cmd === '清除資料') {
@@ -261,28 +263,20 @@ client.on('interactionCreate', async interaction => {
                     await db.collection('members').doc(targetUser.id).delete();
                     const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
                     if (member) {
-                        const rolesToRemove = [
-                            config.roles.guildMember, 
-                            config.roles.familyFriend,
-                            ...Object.values(config.roles.classes)
-                        ];
+                        const rolesToRemove = [config.roles.guildMember, config.roles.familyFriend, ...Object.values(config.roles.classes)];
                         await member.roles.remove(rolesToRemove).catch(() => {});
                     }
                     return interaction.editReply(`✅ **重置成功！**\n已完全清除 <@${targetUser.id}> 的資料庫紀錄，並拔除所有公會與職業身分組。`);
                 } catch (err) { return interaction.editReply('❌ 清除資料失敗，請確認機器人權限是否足夠。'); }
             }
 
-            // 🌟 終極新增：自訂數量清除訊息指令
             if (cmd === '清除訊息') {
                 await interaction.deferReply({ ephemeral: true });
                 const amount = interaction.options.getInteger('數量');
                 try {
                     const deleted = await interaction.channel.bulkDelete(amount, true);
                     return interaction.editReply(`✅ 咻咻咻～🧹 成功清除了 **${deleted.size}** 則訊息！\n*(⚠️ 貼心提醒：超過 14 天的歷史訊息 Discord 系統不允許機器人整把刪除喔！)*`);
-                } catch (err) {
-                    console.error("❌ 清除訊息失敗：", err);
-                    return interaction.editReply('❌ 清除失敗，請確認機器人是否有「管理訊息」的權限，或是訊息已經太舊了。');
-                }
+                } catch (err) { return interaction.editReply('❌ 清除失敗，請確認機器人是否有「管理訊息」的權限，或是訊息已經太舊了。'); }
             }
         }
 
@@ -313,7 +307,6 @@ client.on('interactionCreate', async interaction => {
 
                     const member = await interaction.guild.members.fetch(targetUserId);
                     
-                    // 🌟 處理資料庫與多職業
                     const docRef = db.collection('members').doc(targetUserId);
                     const doc = await docRef.get();
                     let existingClasses = [];
@@ -323,7 +316,6 @@ client.on('interactionCreate', async interaction => {
                     }
                     if (!existingClasses.includes(targetClass)) existingClasses.push(targetClass);
 
-                    // 🌟 無縫轉正：拔除親友團，換上公會成員
                     await member.roles.remove(config.roles.familyFriend).catch(() => {});
 
                     let rolesToAdd = [config.roles.guildMember];
@@ -336,23 +328,28 @@ client.on('interactionCreate', async interaction => {
                         joinDate: doc.exists && doc.data().joinDate ? doc.data().joinDate : admin.firestore.FieldValue.serverTimestamp()
                     }, { merge: true });
 
-                    // 🌟 採用新版暱稱系統
                     await updateNickname(member, gameName, '公會成員', existingClasses);
 
-                    // 🌟 升級版：詢問是否有多職業
+                    // 🌟 升級版：新版溫暖過件通知 + 雙修詢問
                     const passedMsg = `🎉 **太棒了！狂賀！** 🎉\n你的申請已經正式通過啦！歡迎成為 ENDLESS 大家庭的一份子！🥳\n現在，伺服器裡的所有專屬頻道都已經為你解鎖囉！趕快進去跟大家打個招呼、找人一起練功打王吧！衝呀～～🚀`;
                     
                     const extraClassSelect = new StringSelectMenuBuilder()
                         .setCustomId(`add_extra_class_${config.guildId}`)
-                        .setPlaceholder('選擇其他雙修職業 (若無請忽略)...')
+                        .setPlaceholder('選擇其他的職業分身 (若無請忽略)...')
                         .addOptions(classOptionsList);
                     
-                    const extraClassMsg = `\n\n💌 親愛的 **${gameName}** ，如果您在遊戲中還有其他雙修的職業分身，歡迎點選下方的選單新增！\n系統會自動幫您配發身分組，並在您的暱稱加上超帥氣的職業標籤喔！（例如：黑騎士｜主教）\n*(如果沒有其他職業，這則訊息可以直接忽略唷！)*🥰`;
+                    const extraClassMsg = `\n\n💌 親愛的 **${gameName}** ，如果您在遊戲中還有其他的職業分身，歡迎點選下方的選單新增！\n系統會自動幫您配發身分組，並在您的暱稱加上容易識別的職業標籤喔！🥰\n*(如果沒有其他職業，這則訊息可以直接忽略唷！)*`;
 
                     await member.send({
                         content: passedMsg + extraClassMsg,
                         components: [new ActionRowBuilder().addComponents(extraClassSelect)]
                     }).catch(() => {});
+
+                    // 🌟 升級版：發送並釘選功能指南
+                    const guideMsgText = `📌 **【 ENDLESS 實用功能小指南 】** 📌\n你可以在伺服器內的任何頻道，輸入以下指令來呼叫我幫忙喔：\n\n🔸 \`/更新資料\`：隨時更改你的遊戲名稱或最新等級！\n🔸 \`/刪除職業\`：不小心點錯分身職業，或是不玩該職業時可以一鍵刪除！\n🔸 \`/解鎖權限\`：呼叫萬用的迎新面板。\n\n*(💡 這則訊息已經幫你釘選在我們的對話中，隨時可以點擊右上角的「圖釘 📌」查看喔！)*`;
+                    
+                    const guideMsg = await member.send(guideMsgText).catch(() => null);
+                    if (guideMsg) await guideMsg.pin().catch(() => console.log('⚠️ 無法釘選私訊 (可能已達上限或權限問題)'));
 
                     const updatedEmbed = EmbedBuilder.from(originalEmbed).setColor('#00FF00').setTitle('✅ 審核已通過').setFooter({ text: `由 ${interaction.user.tag} 批准`, iconURL: interaction.user.displayAvatarURL() });
                     await interaction.message.edit({ embeds: [updatedEmbed], components: [] });
@@ -389,7 +386,32 @@ client.on('interactionCreate', async interaction => {
         // 🔘 下拉式選單
         if (interaction.isStringSelectMenu()) {
             
-            // 🌟 玩家在私訊中選擇「新增多職業」
+            // 🌟 玩家在私訊中選擇「刪除職業」
+            if (interaction.customId === 'select_remove_class') {
+                await interaction.deferUpdate();
+                const classToRemove = interaction.values[0];
+                
+                const docRef = db.collection('members').doc(interaction.user.id);
+                const doc = await docRef.get();
+                if (!doc.exists) return interaction.followUp({ content: '❌ 找不到資料。', ephemeral: true });
+                
+                const data = doc.data();
+                let classes = data.gameClasses || (data.gameClass ? [data.gameClass] : []);
+                
+                if (!classes.includes(classToRemove)) return interaction.followUp({ content: '❌ 您已經沒有這個職業囉！', ephemeral: true });
+                
+                classes = classes.filter(c => c !== classToRemove);
+                
+                const roleId = config.roles.classes[classToRemove];
+                if (roleId) await interaction.member.roles.remove(roleId).catch(() => {});
+                
+                await docRef.update({ gameClasses: classes, lastUpdated: admin.firestore.FieldValue.serverTimestamp() });
+                
+                const newNick = await updateNickname(interaction.member, data.gameName, data.role, classes);
+                
+                return interaction.editReply({ content: `✅ 成功刪除 **${classToRemove}**！\n您的暱稱已更新為：**${newNick}**`, components: [] });
+            }
+
             if (interaction.customId.startsWith('add_extra_class_')) {
                 const selectedClass = interaction.values[0];
                 const guildId = interaction.customId.split('_')[3];
@@ -413,12 +435,10 @@ client.on('interactionCreate', async interaction => {
 
                 classes.push(selectedClass);
 
-                // 給予新職業身分組
                 if (config.roles.classes[selectedClass]) {
                     await member.roles.add(config.roles.classes[selectedClass]).catch(() => {});
                 }
 
-                // 寫入 DB 並更新暱稱
                 await docRef.update({ gameClasses: classes });
                 const newNick = await updateNickname(member, gameName, roleType, classes);
 
@@ -433,7 +453,7 @@ client.on('interactionCreate', async interaction => {
                 if (isMember) {
                     modal.addComponents(
                         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('game_name').setLabel("遊戲名稱").setStyle(TextInputStyle.Short)),
-                        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('game_level').setLabel("遊戲等級 (純數字)").setStyle(TextInputStyle.Short)),
+                        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('game_level').setLabel("遊戲等級").setStyle(TextInputStyle.Short)),
                         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('game_code').setLabel("遊戲代碼").setStyle(TextInputStyle.Short))
                     );
                 } else {
@@ -570,7 +590,6 @@ client.on('interactionCreate', async interaction => {
                         gameClasses: existingClasses, gameLevel: 'N/A', gameCode: 'N/A', role: '親友團', joinDate: admin.firestore.FieldValue.serverTimestamp()
                     }, { merge: true });
                     
-                    // 🌟 套用新版暱稱
                     await updateNickname(interaction.member, nicknameInput, '親友團', existingClasses);
                     
                     try {
@@ -622,7 +641,6 @@ client.on('interactionCreate', async interaction => {
                     if (newLevel && newLevel !== 'N/A') updateData.gameLevel = newLevel;
                     await db.collection('members').doc(interaction.user.id).update(updateData);
                     
-                    // 🌟 套用新版暱稱
                     const newNick = await updateNickname(interaction.member, newName, roleType, classes);
                     
                     return interaction.editReply({ content: `✅ 資料更新成功！您的暱稱已同步更新為：**${newNick}**` });
@@ -641,7 +659,6 @@ client.on('guildMemberAdd', async member => {
     try { await member.send(`👋 歡迎來到 **ENDLESS**！請前往伺服器內的任意頻道，輸入 \`/解鎖權限\` 指令來申請身分。`).catch(() => {}); } catch (error) {}
 });
 
-// 🌟 終極新增：自動清除離開成員的資料庫紀錄
 client.on('guildMemberRemove', async member => {
     try {
         const doc = await db.collection('members').doc(member.id).get();
