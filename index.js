@@ -65,7 +65,7 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🌐 網頁伺服器已啟動於 Port ${PORT}`));
 
 // ==========================================
-// 🤖 4️⃣ 建立 Discord Client 與 指令註冊 (新增 DM 與 Message 權限)
+// 🤖 4️⃣ 建立 Discord Client 與 指令註冊
 // ==========================================
 const client = new Client({
     intents: [
@@ -77,7 +77,7 @@ const client = new Client({
     partials: [
         Partials.User, 
         Partials.GuildMember, 
-        Partials.Channel, // 必須要有 Channel 才能在私訊尚未快取時接收
+        Partials.Channel, 
         Partials.Message
     ]
 });
@@ -274,7 +274,6 @@ client.on('interactionCreate', async interaction => {
                         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('game_name').setLabel("遊戲名稱").setStyle(TextInputStyle.Short)),
                         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('game_level').setLabel("遊戲等級 (純數字)").setStyle(TextInputStyle.Short)),
                         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('game_code').setLabel("遊戲代碼").setStyle(TextInputStyle.Short))
-                        // ❌ 已移除 URL 欄位，因為我們現在用 DM 直接收圖！
                     );
                 } else {
                     modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('nickname').setLabel("暱稱").setStyle(TextInputStyle.Short)));
@@ -313,7 +312,7 @@ client.on('interactionCreate', async interaction => {
         // 🔘 彈出式表單提交
         if (interaction.isModalSubmit()) {
             
-            // ✨ 升級版：公會申請 + 私訊索取照片系統
+            // 提交公會申請 + 收集私訊照片
             if (interaction.customId.startsWith('modal_member_')) {
                 const gameClass = interaction.customId.split('_')[2]; 
                 const name = interaction.fields.getTextInputValue('game_name');
@@ -322,8 +321,8 @@ client.on('interactionCreate', async interaction => {
                 
                 await interaction.deferReply({ ephemeral: true }); 
 
-                // 建立一個打包發送至審核頻道的函式
-                const sendToApprovalChannel = async (photoUrl = null, timeoutNote = false) => {
+                // 打包成送去審核頻道的函式
+                const sendToApprovalChannel = async (attachment = null, timeoutNote = false) => {
                     try {
                         const channel = await client.channels.fetch(config.channels.approval);
                         if (channel) {
@@ -341,41 +340,48 @@ client.on('interactionCreate', async interaction => {
                                 .setTimestamp()
                                 .setFooter({ text: 'ENDLESS 審核系統', iconURL: client.user.displayAvatarURL() });
 
-                            if (photoUrl) embed.setImage(photoUrl); // 貼上玩家在私訊傳的截圖
-                            if (timeoutNote) embed.addFields({ name: '⚠️ 備註', value: '玩家未在 5 分鐘內附上截圖。' });
+                            const messageOptions = { embeds: [embed] };
+
+                            // ✨ 核心修復：直接將實體檔案附加到訊息中，讓 Discord 伺服器重新解析
+                            if (attachment) {
+                                embed.setImage(`attachment://${attachment.name}`);
+                                messageOptions.files = [attachment];
+                            }
+                            if (timeoutNote) {
+                                embed.addFields({ name: '⚠️ 備註', value: '玩家未在 5 分鐘內附上截圖。' });
+                            }
 
                             const row = new ActionRowBuilder().addComponents(
                                 new ButtonBuilder().setCustomId(`approve_${interaction.user.id}_${gameClass}`).setLabel('✅ 審核通過').setStyle(ButtonStyle.Success),
                                 new ButtonBuilder().setCustomId(`reject_${interaction.user.id}`).setLabel('❌ 拒絕/退回').setStyle(ButtonStyle.Danger)
                             );
-                            await channel.send({ embeds: [embed], components: [row] });
+                            messageOptions.components = [row];
+
+                            await channel.send(messageOptions);
                         }
-                    } catch (error) {
-                        console.error("❌ 送出審核表單失敗：", error);
-                    }
+                    } catch (error) { console.error("❌ 送出審核表單失敗：", error); }
                 };
 
-                // 嘗試開啟私訊通道索取圖片
+                // 嘗試開啟私訊
                 try {
                     const dmChannel = await interaction.user.createDM();
                     await interaction.editReply({ content: `✅ 第一步完成！\n\n📸 **請立刻去查看我給你的「私訊 (DM)」**，並直接把你的遊戲截圖傳送給我，才能完成最後的申請步驟喔！` });
 
                     await dmChannel.send(`👋 嗨！你剛剛填寫了 ENDLESS 的入會申請。\n\n📸 **請在 5 分鐘內，直接將你的「遊戲截圖」上傳/發送在這個聊天室。**\n*(這張截圖會直接附在你的申請單上給幹部看)*\n\n如果不需要上傳截圖，請直接回覆文字：\`跳過\``);
 
-                    // 建立私訊收集器 (時限 5 分鐘，只收一則訊息)
                     const filter = m => m.author.id === interaction.user.id;
                     const collector = dmChannel.createMessageCollector({ filter, time: 5 * 60 * 1000, max: 1 });
 
                     collector.on('collect', async m => {
-                        let photoUrl = null;
+                        let uploadedAttachment = null;
                         if (m.attachments.size > 0) {
-                            photoUrl = m.attachments.first().url; // 抓取使用者上傳的圖片
+                            uploadedAttachment = m.attachments.first();
                             await m.reply(`✅ 收到截圖！你的申請單已經完整送出給幹部審核囉！請靜候佳音。`);
                         } else {
                             await m.reply(`✅ 收到指示！已略過截圖步驟，你的申請單已經送出給幹部審核囉！請靜候佳音。`);
                         }
-                        // 將圖片傳給審核頻道
-                        await sendToApprovalChannel(photoUrl, false);
+                        // 將實體圖片傳給審核頻道
+                        await sendToApprovalChannel(uploadedAttachment, false);
                     });
 
                     collector.on('end', async (collected, reason) => {
@@ -386,7 +392,6 @@ client.on('interactionCreate', async interaction => {
                     });
 
                 } catch (error) {
-                    // 如果使用者關閉了「允許來自伺服器成員的私人訊息」，就會跳到這裡
                     await interaction.editReply({ content: `✅ 資料已送出，請靜候幹部審核！\n*(⚠️ 備註：因為您關閉了 Discord 的私訊功能，系統無法向您索取截圖，已自動跳過此步驟)*` });
                     await sendToApprovalChannel(null, false);
                 }
@@ -409,7 +414,7 @@ client.on('interactionCreate', async interaction => {
                     
                     const newNickname = `［${nicknameInput}］🌙［${gameClass}］`.substring(0, 32);
                     try { await interaction.member.setNickname(newNickname); } 
-                    catch(e) { await interaction.member.send(`⚠️ 溫馨提醒：因為您的權限位階較高，機器人無法幫您自動改名，請手動修改為：**${newNickname}**`).catch(() => {}); }
+                    catch(e) { await interaction.member.send(`⚠️ 溫馨提醒：請手動修改暱稱為：**${newNickname}**`).catch(() => {}); }
                     
                     return interaction.editReply({ content: `✅ 登記成功！身分組已發放，歡迎加入！` });
                 } catch (error) { return interaction.editReply({ content: '❌ 處理失敗，請確認機器人身分組階級是否在親友團之上。' }); }
