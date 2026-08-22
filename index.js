@@ -39,8 +39,9 @@ const config = {
     guildId: '1539475243733622794', 
     channels: { 
         approval: '1539972747545808937',
-        welcome: '1539971422842261601',       // 公會成員迎新頻道
-        welcomeFriend: '1539904561941188608' // 親友團專屬迎新頻道
+        welcome: '1539971422842261601',       
+        welcomeFriend: '1539904561941188608', 
+        tradeMarket: '1539539176788205588'
     },
     roles: {
         adminRoles: ['1539508532846526494', '1539959330726486036'], 
@@ -112,6 +113,21 @@ client.once('clientReady', async () => {
         {
             name: '清除訊息', description: '快速清除當前頻道指定數量的訊息 (僅限幹部)',
             options: [{ name: '數量', description: '請輸入要清除的訊息數量 (1 到 100)', type: ApplicationCommandOptionType.Integer, required: true, min_value: 1, max_value: 100 }]
+        },
+        // 🌟 新增：全自動化交易看板指令 (支援直接上傳裝備圖片！)
+        {
+            name: '發布交易',
+            description: '在交易頻道發布精美的買賣/交換商品卡片',
+            options: [
+                { 
+                    name: '類型', description: '您要出售、收購還是交換？', type: ApplicationCommandOptionType.String, required: true,
+                    choices: [ { name: '🟢 出售 (Sell)', value: 'sell' }, { name: '🔴 收購 (Buy)', value: 'buy' }, { name: '🔵 交換 (Trade)', value: 'trade' } ]
+                },
+                { name: '物品名稱', description: '請輸入裝備或物品的精確名稱', type: ApplicationCommandOptionType.String, required: true },
+                { name: '價格', description: '請輸入楓幣/期望價格 (或填寫 報價/私)', type: ApplicationCommandOptionType.String, required: true },
+                { name: '裝備截圖', description: '請直接上傳物品數值圖或遊戲截圖', type: ApplicationCommandOptionType.Attachment, required: false },
+                { name: '補充說明', description: '有什麼特別的數值要求或交易條件嗎？', type: ApplicationCommandOptionType.String, required: false }
+            ]
         }
     ];
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -163,15 +179,61 @@ async function checkAnniversaries() {
 // ==========================================
 client.on('interactionCreate', async interaction => {
     try {
-        // 🔘 斜線指令 (全部限幹部使用)
+        // 🔘 斜線指令
         if (interaction.isChatInputCommand()) {
             const cmd = interaction.commandName;
             const isOwner = interaction.user.id === interaction.guild?.ownerId; 
             const hasAdminRole = interaction.member.roles.cache.hasAny(...config.roles.adminRoles); 
             const hasAdminPerm = interaction.member.permissions.has(PermissionFlagsBits.Administrator); 
 
-            if (!isOwner && !hasAdminRole && !hasAdminPerm) {
-                return interaction.reply({ content: '❌ 很抱歉，此指令僅限幹部使用。', ephemeral: true });
+            // 幹部專屬指令驗證
+            if ((cmd === '解鎖權限' || cmd === '發布小指南' || cmd === '查詢目前公會成員' || cmd === '查詢目前親友團' || cmd === '清除資料' || cmd === '清除訊息') && !isOwner && !hasAdminRole && !hasAdminPerm) {
+                return interaction.reply({ content: '❌ 很抱歉，此管理指令僅限幹部使用。', ephemeral: true });
+            }
+
+            // 🌟 終極新增：發布交易看板功能 (全民皆可用)
+            if (cmd === '發布交易') {
+                await interaction.deferReply({ ephemeral: true });
+                
+                const tradeChannel = await client.channels.fetch(config.channels.tradeMarket).catch(() => null);
+                if (!tradeChannel) return interaction.editReply('❌ 找不到拍賣頻道！請通知管理員確認設定。');
+
+                const type = interaction.options.getString('類型');
+                const itemName = interaction.options.getString('物品名稱');
+                const price = interaction.options.getString('價格');
+                const desc = interaction.options.getString('補充說明') || '無特別說明。可以到下方討論串留言詢問細節！';
+                const image = interaction.options.getAttachment('裝備截圖');
+
+                let colorTag, typeTitle, emoji;
+                if (type === 'sell') { colorTag = '#00FF00'; typeTitle = '【 出 售 】'; emoji = '🟢'; }
+                if (type === 'buy')  { colorTag = '#FF0000'; typeTitle = '【 收 購 】'; emoji = '🔴'; }
+                if (type === 'trade'){ colorTag = '#00BFFF'; typeTitle = '【 交 換 】'; emoji = '🔵'; }
+
+                const tradeEmbed = new EmbedBuilder()
+                    .setColor(colorTag)
+                    .setTitle(`${emoji} ${typeTitle} ${itemName}`)
+                    .setDescription(`**發布者：** <@${interaction.user.id}>\n**期望價格：** \`${price}\`\n\n**📝 補充說明：**\n${desc}`)
+                    .setTimestamp()
+                    .setFooter({ text: 'ENDLESS 交易所', iconURL: interaction.user.displayAvatarURL() });
+
+                // 如果有上傳圖片，直接塞進卡片裡！
+                if (image) tradeEmbed.setImage(image.url);
+
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId(`close_trade_${interaction.user.id}`).setLabel('📦 標記為已結單').setStyle(ButtonStyle.Secondary)
+                );
+
+                // 傳送到交易頻道
+                const msg = await tradeChannel.send({ embeds: [tradeEmbed], components: [row] });
+                
+                // 自動開串，讓大家可以殺價討論
+                await msg.startThread({
+                    name: `${emoji} 議價區：${itemName}`,
+                    autoArchiveDuration: 60,
+                    reason: '系統自動建立交易討論串'
+                }).catch(() => console.log('⚠️ 自動建立討論串失敗 (可能是頻道權限設定問題)'));
+
+                return interaction.editReply(`✅ 您的交易卡片已經成功發布到 <#${config.channels.tradeMarket}> 囉！`);
             }
 
             if (cmd === '解鎖權限') {
@@ -265,6 +327,41 @@ client.on('interactionCreate', async interaction => {
 
         // 🔘 按鈕點擊
         if (interaction.isButton()) {
+
+            // 🌟 處理一鍵結單按鈕
+            if (interaction.customId.startsWith('close_trade_')) {
+                const authorId = interaction.customId.split('_')[2];
+                const isOwner = interaction.user.id === interaction.guild?.ownerId; 
+                const hasAdminRole = interaction.member.roles.cache.hasAny(...config.roles.adminRoles); 
+                const hasAdminPerm = interaction.member.permissions.has(PermissionFlagsBits.Administrator); 
+                
+                // 防呆：只有發布者或幹部可以結單
+                if (interaction.user.id !== authorId && !isOwner && !hasAdminRole && !hasAdminPerm) {
+                    return interaction.reply({ content: '❌ 很抱歉，只有這筆交易的發布者或是管理員可以操作結單喔！', ephemeral: true });
+                }
+
+                await interaction.deferUpdate();
+                try {
+                    const originalEmbed = interaction.message.embeds[0];
+                    const updatedEmbed = EmbedBuilder.from(originalEmbed)
+                        .setColor('#808080') // 變成灰色
+                        .setTitle(`~~${originalEmbed.title}~~ (已結單)`)
+                        .setDescription(`**⚠️ 這筆交易已經結單結束囉！**\n\n${originalEmbed.description}`);
+                    
+                    await interaction.message.edit({ embeds: [updatedEmbed], components: [] });
+
+                    // 如果有討論串，順便關閉討論串
+                    if (interaction.message.hasThread) {
+                        const thread = interaction.message.thread;
+                        await thread.send('🔒 **賣家已標記此交易為「結單」，本討論串將自動關閉存檔。**');
+                        await thread.setArchived(true, '交易已結單');
+                    }
+                } catch (e) {
+                    console.error('❌ 結單失敗', e);
+                }
+                return;
+            }
+
             if (interaction.customId === 'btn_member' || interaction.customId === 'btn_friend') {
                 const isMember = interaction.customId === 'btn_member';
                 const selectMenu = new StringSelectMenuBuilder()
@@ -317,7 +414,7 @@ client.on('interactionCreate', async interaction => {
 
                     await updateNickname(member, gameName, '公會成員', finalClasses);
 
-                    const passedMsg = `🎉 **太棒了！狂賀！** 🎉\n歡迎成為 ENDLESS 大家庭的一份子！🥳\n現在，伺服器裡的所有專屬頻道都已經為你解鎖囉！趕快進去跟大家打個招呼、找人一起練功打王吧！衝呀～～🚀`;
+                    const passedMsg = `🎉 **太棒了！狂賀！** 🎉\n你的申請已經正式通過啦！歡迎成為 ENDLESS 大家庭的一份子！🥳\n現在，伺服器裡的所有專屬頻道都已經為你解鎖囉！趕快進去跟大家打個招呼、找人一起練功打王吧！衝呀～～🚀`;
                     await member.send(passedMsg).catch(() => {});
 
                     const updatedEmbed = EmbedBuilder.from(originalEmbed).setColor('#00FF00').setTitle('✅ 審核已通過').setFooter({ text: `由 ${interaction.user.tag} 批准`, iconURL: interaction.user.displayAvatarURL() });
@@ -353,7 +450,6 @@ client.on('interactionCreate', async interaction => {
         // 🔘 下拉式選單
         if (interaction.isStringSelectMenu()) {
             
-            // 🌟 處理服務台的總選單功能
             if (interaction.customId === 'select_user_action') {
                 const action = interaction.values[0];
                 
@@ -567,7 +663,6 @@ client.on('interactionCreate', async interaction => {
                     
                     await updateNickname(interaction.member, nameInput, '親友團', finalClasses);
                     
-                    // 🌟 自動配發身分組後發送私訊 (親友團)
                     const passedMsg = `🎉 **太棒了！狂賀！** 🎉\n歡迎成為 ENDLESS 大家庭的一份子！🥳\n現在，伺服器裡的所有專屬頻道都已經為你解鎖囉！趕快進去跟大家打個招呼、找人一起練功打王吧！衝呀～～🚀`;
                     await interaction.member.send(passedMsg).catch(() => {});
 
