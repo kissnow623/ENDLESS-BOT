@@ -11,7 +11,7 @@ const {
     ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, 
     TextInputStyle, EmbedBuilder, REST, Routes,
     StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
-    PermissionFlagsBits 
+    PermissionFlagsBits, ApplicationCommandOptionType // 🌟 新增選項工具
 } = require('discord.js');
 const express = require('express');
 const admin = require('firebase-admin');
@@ -37,7 +37,10 @@ const db = admin.firestore();
 // ==========================================
 const config = {
     guildId: '1539475243733622794', 
-    channels: { approval: '1539972747545808937' },
+    channels: { 
+        approval: '1539972747545808937',
+        welcome: '1539971422842261601' 
+    },
     roles: {
         adminRoles: ['1539508532846526494', '1539959330726486036'], 
         guildMember: '1539959985797341184',
@@ -56,6 +59,14 @@ const classOptionsList = Object.keys(config.roles.classes).map(className =>
     new StringSelectMenuOptionBuilder().setLabel(className).setValue(className)
 );
 
+const welcomeMessages = [
+    (userId) => `🎉 掌聲加尖叫！讓我們熱烈歡迎 <@${userId}> 閃亮登場！✨ 大家快來跟他打聲招呼，準備一起展開在 ENDLESS 的大冒險啦！🚀`,
+    (userId) => `🍻 吧台的小夥伴請注意，我們有新客人啦！歡迎 <@${userId}> 踏入 ENDLESS 酒館！趕緊拉張椅子坐下，今晚我們不醉不歸（或是打王打到天亮）！🍖`,
+    (userId) => `🔮 *一陣神秘的魔法光芒閃過...* 哇！原來是 <@${userId}> 被傳送到 ENDLESS 大家庭啦！很高興遇見你，未來的日子請多指教喔！🥰`,
+    (userId) => `🎈 叮咚！ENDLESS 迎來了一位超酷的新夥伴！<@${userId}> 已經順利解鎖全部頻道囉～大家快把最熱情的貼圖刷起來，讓他感受我們的溫暖吧！🔥🔥`,
+    (userId) => `⚔️ 號角響起！勇敢的冒險者 <@${userId}> 正式加入 ENDLESS 的行列！我們又多了一位強力的好隊友啦！準備好一起挑戰極限了嗎？衝呀！💪`
+];
+
 // ==========================================
 // 🌐 3️⃣ 建立 Express 伺服器
 // ==========================================
@@ -71,8 +82,8 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds, 
         GatewayIntentBits.GuildMembers, 
-        GatewayIntentBits.DirectMessages,   // 允許接收私訊
-        GatewayIntentBits.MessageContent    // 允許讀取訊息內容 (圖片/文字)
+        GatewayIntentBits.DirectMessages,   
+        GatewayIntentBits.MessageContent    
     ],
     partials: [
         Partials.User, 
@@ -91,7 +102,18 @@ client.once('clientReady', async () => {
     const commands = [
         { name: '解鎖權限', description: '發布加入 ENDLESS 或是成為親友團的申請面板' },
         { name: '查詢目前公會成員', description: '查詢公會成員列表與總人數 (僅限管理員)' },
-        { name: '更新資料', description: '更新您的遊戲名稱或等級 (同步修改暱稱)' }
+        { name: '更新資料', description: '更新您的遊戲名稱或等級 (同步修改暱稱)' },
+        // 🌟 新增一鍵清除資料指令
+        { 
+            name: '清除資料', 
+            description: '清除指定成員的資料庫紀錄與身分組，方便重新測試 (僅限幹部)',
+            options: [{
+                name: '目標',
+                description: '請選擇要重置資料的成員',
+                type: ApplicationCommandOptionType.User,
+                required: true
+            }]
+        }
     ];
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
@@ -149,7 +171,8 @@ client.on('interactionCreate', async interaction => {
             const hasAdminRole = interaction.member.roles.cache.hasAny(...config.roles.adminRoles); 
             const hasAdminPerm = interaction.member.permissions.has(PermissionFlagsBits.Administrator); 
 
-            if ((cmd === '解鎖權限' || cmd === '查詢目前公會成員') && !isOwner && !hasAdminRole && !hasAdminPerm) {
+            // 🌟 權限阻擋包含新指令
+            if ((cmd === '解鎖權限' || cmd === '查詢目前公會成員' || cmd === '清除資料') && !isOwner && !hasAdminRole && !hasAdminPerm) {
                 return interaction.reply({ content: '❌ 很抱歉，此管理指令僅限幹部使用。', ephemeral: true });
             }
 
@@ -183,6 +206,35 @@ client.on('interactionCreate', async interaction => {
                 const q2 = new TextInputBuilder().setCustomId('update_level').setLabel("目前最新等級 (親友團可不填)").setStyle(TextInputStyle.Short).setRequired(false);
                 modal.addComponents(new ActionRowBuilder().addComponents(q1), new ActionRowBuilder().addComponents(q2));
                 return interaction.showModal(modal);
+            }
+
+            // 🌟 終極測試工具：一鍵清除資料指令
+            if (cmd === '清除資料') {
+                await interaction.deferReply({ ephemeral: true });
+                const targetUser = interaction.options.getUser('目標');
+                if (!targetUser) return interaction.editReply('❌ 找不到該成員。');
+
+                try {
+                    // 1. 刪除資料庫紀錄
+                    await db.collection('members').doc(targetUser.id).delete();
+                    
+                    // 2. 拔除伺服器身分組
+                    const member = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+                    if (member) {
+                        const rolesToRemove = [
+                            config.roles.guildMember, 
+                            config.roles.familyFriend,
+                            ...Object.values(config.roles.classes)
+                        ];
+                        // 嘗試拔除這些身分組 (忽略已沒有該身分組的錯誤)
+                        await member.roles.remove(rolesToRemove).catch(() => {});
+                    }
+                    
+                    return interaction.editReply(`✅ **重置成功！**\n已完全清除 <@${targetUser.id}> 的資料庫紀錄，並拔除所有公會與職業身分組。\n(現在該帳號已回到白紙狀態，可以重新測試 /解鎖權限 囉！)`);
+                } catch (err) {
+                    console.error('❌ 清除資料失敗：', err);
+                    return interaction.editReply('❌ 清除資料失敗，請確認機器人權限是否足夠。');
+                }
             }
         }
 
@@ -225,13 +277,22 @@ client.on('interactionCreate', async interaction => {
                     try { await member.setNickname(newNickname); } 
                     catch(e) { await member.send(`⚠️ 溫馨提醒：請手動修改暱稱為：**${newNickname}**`).catch(() => {}); }
 
-                    await member.send(`🎉 恭喜！申請已通過，歡迎加入 ENDLESS！`).catch(() => {});
+                    const passedMsg = `🎉 **太棒了！狂賀！** 🎉\n你的申請已經正式通過啦！歡迎成為 ENDLESS 大家庭的一份子！🥳\n現在，伺服器裡的所有專屬頻道都已經為你解鎖囉！趕快進去跟大家打個招呼、找人一起練功打王吧！衝呀～～🚀`;
+                    await member.send(passedMsg).catch(() => {});
 
                     const updatedEmbed = EmbedBuilder.from(originalEmbed)
                         .setColor('#00FF00')
                         .setTitle('✅ 審核已通過')
                         .setFooter({ text: `由 ${interaction.user.tag} 批准`, iconURL: interaction.user.displayAvatarURL() });
                     await interaction.message.edit({ embeds: [updatedEmbed], components: [] });
+
+                    try {
+                        const welcomeChannel = await client.channels.fetch(config.channels.welcome);
+                        if (welcomeChannel) {
+                            const randomMsg = welcomeMessages[Math.floor(Math.random() * welcomeMessages.length)](targetUserId);
+                            await welcomeChannel.send(randomMsg);
+                        }
+                    } catch (err) { console.log('⚠️ 無法發送迎新廣播：', err); }
 
                 } catch (error) { 
                     return interaction.followUp({ content: '❌ 處理失敗，請確認機器人權限。', ephemeral: true }); 
@@ -247,9 +308,9 @@ client.on('interactionCreate', async interaction => {
                     .setCustomId(`select_reject_reason_${targetUserId}_${msgId}`)
                     .setPlaceholder('請選擇退回原因...')
                     .addOptions([
-                        { label: '等級未達標', description: '未達公會招收門檻', value: '等級未達標，請繼續加油！期待你變強後再來申請！', emoji: '📈' },
-                        { label: '資料填寫錯誤', description: '遊戲名稱或代碼有誤', value: '資料填寫有誤，請確認後重新申請。', emoji: '📝' },
-                        { label: '查無此人 / 資格不符', description: '遊戲內查無此人或黑名單', value: '經查核帳號資料有疑慮，或查無此代碼。', emoji: '🚫' },
+                        { label: '等級未達標', description: '未達公會招收門檻', value: '你目前的等級還未達到公會的招收門檻喔，請繼續加油！期待你變得更強後再來申請！', emoji: '📈' },
+                        { label: '資料填寫錯誤', description: '遊戲名稱或代碼有誤', value: '你填寫的資料似乎有點小錯誤（可能是遊戲名稱或代碼），請確認過後重新申請一次唷！', emoji: '📝' },
+                        { label: '查無此人 / 資格不符', description: '遊戲內查無此人或黑名單', value: '幹部們在遊戲內暫時查無此帳號，或是資格有點疑慮。如果有誤會，歡迎找幹部確認喔！', emoji: '🚫' },
                         { label: '✍️ 自行輸入理由...', description: '手動輸入其他原因', value: 'custom' }
                     ]);
 
@@ -289,14 +350,15 @@ client.on('interactionCreate', async interaction => {
 
                 if (reason === 'custom') {
                     const modal = new ModalBuilder().setCustomId(`modal_reject_custom_${targetUserId}_${msgId}`).setTitle('填寫退回原因');
-                    const reasonInput = new TextInputBuilder().setCustomId('reject_reason').setLabel("請輸入原因").setStyle(TextInputStyle.Paragraph).setRequired(true);
+                    const reasonInput = new TextInputBuilder().setCustomId('reject_reason').setLabel("請輸入溫暖的退回原因").setStyle(TextInputStyle.Paragraph).setRequired(true);
                     modal.addComponents(new ActionRowBuilder().addComponents(reasonInput));
                     return interaction.showModal(modal);
                 } else {
                     await interaction.deferUpdate();
                     try {
                         const member = await interaction.guild.members.fetch(targetUserId);
-                        await member.send(`您的申請未通過。\n**原因：** ${reason}`).catch(() => {});
+                        const rejectMsg = `💌 嗨嗨～這裡是 ENDLESS 審核中心。\n非常抱歉，你剛才送出的申請暫時未通過審核喔 🥺\n\n**幹部留給你的悄悄話 / 退回原因：**\n💬 *${reason}*\n\n別灰心！只要調整一下，隨時歡迎你再次送出申請！我們的大門永遠為你敞開，期待你準備好後再次回來找我們玩喔！💪✨`;
+                        await member.send(rejectMsg).catch(() => {});
                         
                         const channel = await client.channels.fetch(config.channels.approval);
                         const originalMsg = await channel.messages.fetch(msgId);
@@ -312,7 +374,6 @@ client.on('interactionCreate', async interaction => {
         // 🔘 彈出式表單提交
         if (interaction.isModalSubmit()) {
             
-            // 提交公會申請 + 收集私訊照片
             if (interaction.customId.startsWith('modal_member_')) {
                 const gameClass = interaction.customId.split('_')[2]; 
                 const name = interaction.fields.getTextInputValue('game_name');
@@ -321,7 +382,6 @@ client.on('interactionCreate', async interaction => {
                 
                 await interaction.deferReply({ ephemeral: true }); 
 
-                // 打包成送去審核頻道的函式
                 const sendToApprovalChannel = async (attachment = null, timeoutNote = false) => {
                     try {
                         const channel = await client.channels.fetch(config.channels.approval);
@@ -342,7 +402,6 @@ client.on('interactionCreate', async interaction => {
 
                             const messageOptions = { embeds: [embed] };
 
-                            // ✨ 核心修復：直接將實體檔案附加到訊息中，讓 Discord 伺服器重新解析
                             if (attachment) {
                                 embed.setImage(`attachment://${attachment.name}`);
                                 messageOptions.files = [attachment];
@@ -362,12 +421,11 @@ client.on('interactionCreate', async interaction => {
                     } catch (error) { console.error("❌ 送出審核表單失敗：", error); }
                 };
 
-                // 嘗試開啟私訊
                 try {
                     const dmChannel = await interaction.user.createDM();
-                    await interaction.editReply({ content: `✅ 第一步完成！\n\n📸 **請立刻去查看我給你的「私訊 (DM)」**，並直接把你的遊戲截圖傳送給我，才能完成最後的申請步驟喔！` });
+                    await interaction.editReply({ content: `✅ 第一步完成！\n\n📸 **請立刻去查看我給你的「私訊 (DM)」**，並直接把你的遊戲截圖傳送給我，才能完成最後的申請步驟喔！🏃‍♂️💨` });
 
-                    await dmChannel.send(`👋 嗨！你剛剛填寫了 ENDLESS 的入會申請。\n\n📸 **請在 5 分鐘內，直接將你的「遊戲截圖」上傳/發送在這個聊天室。**\n*(這張截圖會直接附在你的申請單上給幹部看)*\n\n如果不需要上傳截圖，請直接回覆文字：\`跳過\``);
+                    await dmChannel.send(`👋 嗨嗨！你剛剛填寫了 ENDLESS 的入會申請，距離加入我們只差最後一步啦！🏃‍♂️💨\n\n📸 **請在 5 分鐘內，直接將你的「角色資料截圖」傳送在這個聊天室喔！**\n*(這張帥氣的截圖會附在你的申請單上，讓公會幹部們好好認識你！)*\n\n如果不需要上傳截圖，請直接回覆文字：\`跳過\``);
 
                     const filter = m => m.author.id === interaction.user.id;
                     const collector = dmChannel.createMessageCollector({ filter, time: 5 * 60 * 1000, max: 1 });
@@ -376,11 +434,10 @@ client.on('interactionCreate', async interaction => {
                         let uploadedAttachment = null;
                         if (m.attachments.size > 0) {
                             uploadedAttachment = m.attachments.first();
-                            await m.reply(`✅ 收到截圖！你的申請單已經完整送出給幹部審核囉！請靜候佳音。`);
+                            await m.reply(`✅ 完美！收到你的帥氣截圖啦！✨\n你的專屬申請單已經搭乘火箭🚀 完整送達公會審核中心囉！幹部們正在火速為你處理，請稍坐片刻、靜候佳音，我們超期待你的加入！🥰`);
                         } else {
                             await m.reply(`✅ 收到指示！已略過截圖步驟，你的申請單已經送出給幹部審核囉！請靜候佳音。`);
                         }
-                        // 將實體圖片傳給審核頻道
                         await sendToApprovalChannel(uploadedAttachment, false);
                     });
 
@@ -416,6 +473,13 @@ client.on('interactionCreate', async interaction => {
                     try { await interaction.member.setNickname(newNickname); } 
                     catch(e) { await interaction.member.send(`⚠️ 溫馨提醒：請手動修改暱稱為：**${newNickname}**`).catch(() => {}); }
                     
+                    try {
+                        const welcomeChannel = await client.channels.fetch(config.channels.welcome);
+                        if (welcomeChannel) {
+                            await welcomeChannel.send(`🎈 叮咚！ENDLESS 迎來了一位超酷的親友團新夥伴！<@${interaction.user.id}> 已經解鎖頻道囉～大家快把最熱情的貼圖刷起來，讓他感受我們的溫暖吧！🔥🔥`);
+                        }
+                    } catch (err) { console.log('⚠️ 無法發送迎新廣播：', err); }
+
                     return interaction.editReply({ content: `✅ 登記成功！身分組已發放，歡迎加入！` });
                 } catch (error) { return interaction.editReply({ content: '❌ 處理失敗，請確認機器人身分組階級是否在親友團之上。' }); }
             }
@@ -429,7 +493,8 @@ client.on('interactionCreate', async interaction => {
                 await interaction.deferReply({ ephemeral: true });
                 try {
                     const member = await interaction.guild.members.fetch(targetUserId);
-                    await member.send(`您的申請未通過。\n**原因：** ${reason}`).catch(() => {});
+                    const rejectMsg = `💌 嗨嗨～這裡是 ENDLESS 審核中心。\n非常抱歉，你剛才送出的申請暫時未通過審核喔 🥺\n\n**幹部留給你的悄悄話 / 退回原因：**\n💬 *${reason}*\n\n別灰心！只要調整一下，隨時歡迎你再次送出申請！我們的大門永遠為你敞開，期待你準備好後再次回來找我們玩喔！💪✨`;
+                    await member.send(rejectMsg).catch(() => {});
 
                     const channel = await client.channels.fetch(config.channels.approval);
                     const originalMsg = await channel.messages.fetch(msgId);
