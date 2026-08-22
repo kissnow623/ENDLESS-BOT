@@ -39,7 +39,8 @@ const config = {
     guildId: '1539475243733622794', 
     channels: { 
         approval: '1539972747545808937',
-        welcome: '1539971422842261601' 
+        welcome: '1539971422842261601',       // 🌟 公會成員迎新頻道
+        welcomeFriend: '1539904561941188608' // 🌟 新增：親友團專屬迎新頻道
     },
     roles: {
         adminRoles: ['1539508532846526494', '1539959330726486036'], 
@@ -102,7 +103,7 @@ client.once('clientReady', async () => {
     console.log(`🤖 機器人登入成功：${client.user.tag}!`);
     const commands = [
         { name: '解鎖權限', description: '發布加入 ENDLESS 或是成為親友團的申請面板 (僅限幹部)' },
-        { name: '發布小指南', description: '發布 ENDLESS 實用功能小指南面板 (僅限幹部)' }, // 🌟 新增指南指令
+        { name: '發布小指南', description: '發布 ENDLESS 實用功能小指南面板 (僅限幹部)' },
         { name: '查詢目前公會成員', description: '查詢公會成員列表與總人數 (僅限幹部)' },
         { name: '查詢目前親友團', description: '查詢親友團成員列表與總人數 (僅限幹部)' },
         { 
@@ -179,11 +180,11 @@ client.on('interactionCreate', async interaction => {
                     new ButtonBuilder().setCustomId('btn_member').setLabel('公會成員').setStyle(ButtonStyle.Primary),
                     new ButtonBuilder().setCustomId('btn_friend').setLabel('親友團').setStyle(ButtonStyle.Success)
                 );
-                const welcomeMessage = "🎈 **叮咚！歡迎光臨 ENDLESS！** 🎈\n終於等到你啦！為了讓你能在伺服器裡暢通無阻地跟大家聊天，請先偷偷告訴我們，你是我們的……？\n（點擊下方按鈕選擇身分唷！）👇";
+                // 🌟 更新版排版：手指在下一行開頭
+                const welcomeMessage = "🎈 **叮咚！歡迎光臨 ENDLESS！** 🎈\n終於等到你啦！為了讓你能在伺服器裡暢通無阻地跟大家聊天，請先偷偷告訴我們，你是我們的……？\n👇（點擊下方按鈕選擇身分唷！）";
                 return interaction.reply({ content: welcomeMessage, components: [row] });
             }
 
-            // 🌟 新增：發布小指南 (服務台面板)
             if (cmd === '發布小指南') {
                 const guideEmbed = new EmbedBuilder()
                     .setTitle('📌 【 ENDLESS 實用功能小指南 】 📌')
@@ -268,7 +269,6 @@ client.on('interactionCreate', async interaction => {
         if (interaction.isButton()) {
             if (interaction.customId === 'btn_member' || interaction.customId === 'btn_friend') {
                 const isMember = interaction.customId === 'btn_member';
-                // 🌟 迎新升級：允許註冊時多選職業 (最多選 4 個)
                 const selectMenu = new StringSelectMenuBuilder()
                     .setCustomId(`select_class_${isMember ? 'member' : 'friend'}`)
                     .setPlaceholder('請選擇您的遊戲職業 (可多選)...')
@@ -282,11 +282,11 @@ client.on('interactionCreate', async interaction => {
                 });
             }
 
+            // 🛡️ 審核通過
             if (interaction.customId.startsWith('approve_')) {
-                // customId: approve_userId_class1-class2
                 const parts = interaction.customId.split('_');
                 const targetUserId = parts[1];
-                const targetClassesStr = parts[2]; // e.g. "黑騎士-主教"
+                const targetClassesStr = parts[2]; 
                 const requestedClasses = targetClassesStr.split('-');
 
                 await interaction.deferUpdate(); 
@@ -319,7 +319,6 @@ client.on('interactionCreate', async interaction => {
 
                     await updateNickname(member, gameName, '公會成員', finalClasses);
 
-                    // 🌟 移除多餘推播，只送熱情通過訊息
                     const passedMsg = `🎉 **太棒了！狂賀！** 🎉\n你的申請已經正式通過啦！歡迎成為 ENDLESS 大家庭的一份子！🥳\n現在，伺服器裡的所有專屬頻道都已經為你解鎖囉！趕快進去跟大家打個招呼、找人一起練功打王吧！衝呀～～🚀`;
                     await member.send(passedMsg).catch(() => {});
 
@@ -428,19 +427,18 @@ client.on('interactionCreate', async interaction => {
 
             if (interaction.customId.startsWith('select_class_')) {
                 const isMember = interaction.customId === 'select_class_member';
-                const selectedClassesStr = interaction.values.join('-'); // 組合多選
+                const selectedClassesStr = interaction.values.join('-'); 
                 const modal = new ModalBuilder().setCustomId(`modal_${isMember ? 'member' : 'friend'}_${selectedClassesStr}`).setTitle(isMember ? '公會成員資料' : '親友團資料');
 
-                // 🌟 親友團也改為遊戲名稱
-                modal.addComponents(
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('game_name').setLabel("遊戲名稱/暱稱").setStyle(TextInputStyle.Short))
-                );
-                
+                // 🌟 更新版表單文字
                 if (isMember) {
                     modal.addComponents(
-                        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('game_level').setLabel("遊戲等級 (純數字)").setStyle(TextInputStyle.Short)),
+                        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('game_name').setLabel("遊戲名稱").setStyle(TextInputStyle.Short)),
+                        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('game_level').setLabel("遊戲等級").setStyle(TextInputStyle.Short)),
                         new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('game_code').setLabel("遊戲代碼").setStyle(TextInputStyle.Short))
                     );
+                } else {
+                    modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('game_name').setLabel("遊戲名稱").setStyle(TextInputStyle.Short)));
                 }
                 return interaction.showModal(modal);
             }
@@ -478,7 +476,6 @@ client.on('interactionCreate', async interaction => {
         if (interaction.isModalSubmit()) {
             
             if (interaction.customId.startsWith('modal_member_')) {
-                // customId = modal_member_黑騎士-主教
                 const selectedClassesStr = interaction.customId.replace('modal_member_', '');
                 const classesForDisplay = selectedClassesStr.replace(/-/g, '｜');
                 const name = interaction.fields.getTextInputValue('game_name');
@@ -498,7 +495,7 @@ client.on('interactionCreate', async interaction => {
                                 .addFields(
                                     { name: '👤 遊戲名稱', value: `\`${name}\``, inline: true },
                                     { name: '📈 等級', value: `\`LV. ${level}\``, inline: true },
-                                    { name: '⚔️ 職業', value: `\`${classesForDisplay}\``, inline: true }, // 顯示多職業
+                                    { name: '⚔️ 職業', value: `\`${classesForDisplay}\``, inline: true }, 
                                     { name: '🔑 遊戲代碼', value: `\`${code}\``, inline: true }
                                 )
                                 .setColor('#FFD700')
@@ -525,7 +522,9 @@ client.on('interactionCreate', async interaction => {
                 try {
                     const dmChannel = await interaction.user.createDM();
                     await interaction.editReply({ content: `✅ 第一步完成！\n\n📸 **請麻煩去查看我給你的私訊**，並直接把你的遊戲截圖傳送給我，才能完成最後的申請步驟喔！🏃‍♂️💨` });
-                    await dmChannel.send(`👋 嗨嗨！你剛剛填寫了 ENDLESS 的入會申請，距離加入我們只差最後一步啦！🏃‍♂️💨\n\n📸 **請在 5 分鐘內，直接將你的「角色資料截圖」傳送在這個聊天室喔！**\n*(這張帥氣的截圖會附在你的申請單上，讓公會好好認識你！)*\n\n如果不需要上傳截圖，請直接回覆文字：\`跳過\``);
+                    
+                    // 🌟 移除跳過文字提示
+                    await dmChannel.send(`👋 嗨嗨！你剛剛填寫了 ENDLESS 的入會申請，距離加入我們只差最後一步啦！🏃‍♂️💨\n\n📸 **請在 5 分鐘內，直接將你的「角色資料截圖」傳送在這個聊天室喔！**\n*(這張帥氣的截圖會附在你的申請單上，讓公會好好認識你！)*`);
 
                     const filter = m => m.author.id === interaction.user.id;
                     const collector = dmChannel.createMessageCollector({ filter, time: 5 * 60 * 1000, max: 1 });
@@ -572,9 +571,10 @@ client.on('interactionCreate', async interaction => {
                     
                     await updateNickname(interaction.member, nameInput, '親友團', finalClasses);
                     
+                    // 🌟 親友團專屬廣播頻道
                     try {
-                        const welcomeChannel = await client.channels.fetch(config.channels.welcome);
-                        if (welcomeChannel) await welcomeChannel.send(`🎈 叮咚！ENDLESS 迎來了一位超酷的親友團新夥伴！<@${interaction.user.id}> 已經解鎖頻道囉～大家快把最熱情的貼圖刷起來，讓他感受我們的溫暖吧！🔥🔥`);
+                        const welcomeChannelFriend = await client.channels.fetch(config.channels.welcomeFriend);
+                        if (welcomeChannelFriend) await welcomeChannelFriend.send(`🎈 叮咚！ENDLESS 迎來了一位超酷的親友團新夥伴！<@${interaction.user.id}> 已經解鎖頻道囉～大家快把最熱情的貼圖刷起來，讓他感受我們的溫暖吧！🔥🔥`);
                     } catch (err) {}
 
                     return interaction.editReply({ content: `✅ 登記成功！身分組已發放，歡迎加入！` });
