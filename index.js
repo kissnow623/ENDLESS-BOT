@@ -200,7 +200,7 @@ async function generateFriendLeaderboard() {
 }
 
 // ==========================================
-// 🌟 共用核心函式：發布高質感加成感謝卡片 (全新條列式少女排版)
+// 🌟 共用核心函式：發布高質感加成感謝卡片
 // ==========================================
 async function checkAndThankBooster(member, boostChannel, isTest = false, interaction = null) {
     if (!isTest && !member.premiumSince) return false;
@@ -232,7 +232,7 @@ async function checkAndThankBooster(member, boostChannel, isTest = false, intera
 
         const randomText = boostDescriptions[Math.floor(Math.random() * boostDescriptions.length)];
 
-        // 🌟 打造高質感 Embed (採用你的排版設計)
+        // 🌟 打造高質感 Embed (採用條列式少女排版設計)
         const thankYouEmbed = new EmbedBuilder()
             .setColor('#FF99CC') // 溫暖粉紅色邊框
             .setAuthor({ 
@@ -243,18 +243,18 @@ async function checkAndThankBooster(member, boostChannel, isTest = false, intera
             .setDescription(
                 `🌞 🌞 🌞 🌞 🌞 🌞 🌞 🌞 🌞 🌞\n\n` +
                 `• 嘻嘻謝謝泥！<@${member.id}> 💕\n` +
-                `　↳ ${randomText}\n` + // 這裡套入隨機的 10 種感謝詞
+                `　↳ ${randomText}\n` +
                 `• 目前伺服器累計已有【 ✨ **${boostCount} 個加成** ✨ 】\n` +
                 `• 專屬特權與頻道已經解鎖囉！貼心小助手已經私訊發送出場音效設定給您，趕緊去看看吧 💌\n\n` +
                 `🌞 🌞 🌞 🌞 🌞 🌞 🌞 🌞 🌞 🌞`
             )
-            .setThumbnail('https://cdn.discordapp.com/attachments/1539719568065560656/1540000479310913656/IMG_5475.jpg?ex=6a8ba876&is=6a8a56f6&hm=80fda34fd5bbc9ec0addca70c6ad862b19e868ceafc823601f36fc23694804a2&') // 右上角可愛裝飾圖
+            .setThumbnail('https://cdn.discordapp.com/attachments/1539719568065560656/1540960580975886407/star_icon.png') // 右上角可愛裝飾圖 (可替換)
             .setImage(randomImage) // 隨機橫幅大圖
-            .setFooter({ text: `感謝的貢獻與努力，祝你一切順利 🤍 | 今天`, iconURL: member.guild.iconURL() })
+            .setFooter({ text: `感謝您的貢獻與努力，祝您一切順利 🤍`, iconURL: member.guild.iconURL() })
             .setTimestamp();
 
         // 獨立於 Embed 之外的 ping 訊息
-        const pingContent = `🎊 **[加成圖示] <@${member.id}> 觸發了伺服器感謝加成 💕** 🎊`;
+        const pingContent = `🎊 **<@${member.id}> 觸發了伺服器感謝加成 💕** 🎊`;
         const testContent = `🎊 **[私密測試預覽] <@${member.id}> 觸發了伺服器感謝加成 💕** 🎊`;
 
         if (isTest && interaction) {
