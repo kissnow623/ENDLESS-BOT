@@ -220,7 +220,7 @@ async function checkAndThankBooster(member, boostChannel, isTest = false, intera
         const randomEmbed = boostEmbeds[Math.floor(Math.random() * boostEmbeds.length)]
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
             // 🖼️ 圖片設定：使用穩定支援的圖片網址
-            .setImage('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe') 
+            .setImage('https://meee.com.tw/l0AoDDS') 
             .setFooter({ text: 'ENDLESS 感謝您的支持與陪伴', iconURL: member.guild.iconURL() })
             .setTimestamp();
 
