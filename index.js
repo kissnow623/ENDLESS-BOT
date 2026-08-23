@@ -220,7 +220,7 @@ async function checkAndThankBooster(member, boostChannel, isTest = false, intera
         const randomEmbed = boostEmbeds[Math.floor(Math.random() * boostEmbeds.length)]
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
             // 🖼️ 圖片設定：使用穩定支援的圖片網址
-            .setImage('https://meee.com.tw/l0AoDDS') 
+            .setImage('https://cdn.discordapp.com/attachments/1539719568065560656/1540947668430495754/file_000000002f708206a62ff6600b3bbc41.png?ex=6a8bced9&is=6a8a7d59&hm=4051d76562215866856e85981c406c59fd045b9a55e8affcad326e530288adc0&') 
             .setFooter({ text: 'ENDLESS 感謝您的支持與陪伴', iconURL: member.guild.iconURL() })
             .setTimestamp();
 
