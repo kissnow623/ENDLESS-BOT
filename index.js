@@ -235,20 +235,16 @@ async function checkAndThankBooster(member, boostChannel, isTest = false, intera
         // 🌟 打造高質感 Embed
         const thankYouEmbed = new EmbedBuilder()
             .setColor('#FF99CC') // 溫暖粉紅色邊框
-            .setAuthor({ 
-                name: member.displayName, 
-                iconURL: member.user.displayAvatarURL({ dynamic: true }) 
-            })
-            .setTitle(randomChoice.title) 
+            .setTitle(randomChoice.title) // 🌟 套用隨機大標題
             .setDescription(
                 `💖 **Thank you for Ur boost** 💖\n\n` +
-                `${randomChoice.text}\n` + 
+                `${randomChoice.text}\n\n` + 
                 `• 目前伺服器累計已有 ✨ **${boostCount} 個加成** ✨ \n` +
-                `• 解鎖屬於您的出場BGM以及盛大歡迎！貼心小助手已經私訊出場音效設定給您，趕緊去看看吧 💌`
+                `• 已解鎖屬於您的出場BGM以及盛大歡迎！貼心小助手已經私訊出場音效設定給您，趕緊去看看吧 💌`
             )
-            .setThumbnail(member.user.displayAvatarURL({ dynamic: true })) 
-            .setImage(randomImage) 
-            .setFooter({ text: `ENDLESS 感謝您的支持與陪伴，祝您一切順利 🤍`, iconURL: member.guild.iconURL() }) 
+            .setThumbnail(member.user.displayAvatarURL({ dynamic: true })) // 🌟 右上角顯示大頭照
+            .setImage(randomImage) // 隨機橫幅大圖
+            .setFooter({ text: `ENDLESS 感謝您的支持與陪伴，祝您一切順利 🤍`, iconURL: member.guild.iconURL() }) // 🌟 更新：全新的頁尾文字
             .setTimestamp();
 
         // 獨立於 Embed 之外的 ping 訊息
@@ -343,7 +339,7 @@ client.once('clientReady', async () => {
                         await new Promise(resolve => setTimeout(resolve, 300));
                     }
                 }
-                console.log('✅ 啟動加成狀態掃描完成！');
+                console.log('✅ 啟 मध्या加成狀態掃描完成！');
             }
         }
     } catch (err) { console.error('❌ 啟動掃描加成者失敗：', err); }
