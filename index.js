@@ -239,8 +239,8 @@ async function checkAndThankBooster(member, boostChannel, isTest = false, intera
             .setDescription(
                 `💖 **Thank you for Ur boost** 💖\n\n` +
                 `${randomChoice.text}\n\n` + 
-                `• 目前伺服器累計已有 ✨ **${boostCount} 個加成** ✨ \n` +
-                `• 已解鎖屬於您的出場BGM以及盛大歡迎！貼心小助手已經私訊出場音效設定給您，趕緊去看看吧 💌`
+                `• 目前伺服器累計已有\n ✨ **${boostCount} 個加成** ✨ \n\n` +
+                `• 已解鎖屬於您的出場BGM以及盛大歡迎！\n 貼心小助手已經私訊出場音效設定給您，趕緊去看看吧 💌`
             )
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true })) // 🌟 右上角顯示大頭照
             .setImage(randomImage) // 隨機橫幅大圖
