@@ -176,7 +176,7 @@ async function generateMemberLeaderboard() {
 }
 
 // ==========================================
-// 🌟 核心函式：親友團排行榜格式化 (按進來先後順序，不顯示等級)
+// 🌟 核心函式：親友團排行榜格式化
 // ==========================================
 async function generateFriendLeaderboard() {
     try {
@@ -216,41 +216,39 @@ async function checkAndThankBooster(member, boostChannel, isTest = false, intera
         // 隨機選出一張橫幅大圖
         const randomImage = boostBannerImages[Math.floor(Math.random() * boostBannerImages.length)];
         
-        // 10種文案 (融合了你的設計要求)
-        const boostDescriptions = [
-            `**太感動啦！** 你的支持化作了滿天星光，點亮了整個 ENDLESS！✨`,
-            `**滴答滴答！** 是誰送來了滿滿的愛？超級感謝你的加成火力支援！😍`,
-            `**轟隆隆！** 因為你的專屬加成，公會正全速向更棒的未來起飛啦！🛸`,
-            `**致敬守護者！** 每一座偉大的城堡，都需要最堅固的基石，感謝贊助！🛡️`,
-            `**粉紅徽章亮起！** 讓我們掌聲歡迎 VIP，這份心意我們一定會好好珍惜！✨`,
-            `**奇蹟守護者！** 你的無私奉獻，讓我們的伺服器變得更加與眾不同！🔮`,
-            `**酒館金主降臨！** 謝謝老闆幫公會酒館升級高級沙發，讓我們敬你一杯！🍻`,
-            `**捕捉到寶藏！** 系統偵測到一枚閃閃發光的寶藏夥伴，你絕對是最珍貴的！🎁`,
-            `**煙火為你綻放！** 砰！因為你的加成，伺服器的夜空綻放了最美的煙火！🎇`,
-            `**溫暖的擁抱！** 你的支持就像冬天裡的一杯熱可可，暖暖地流進了我們心裡... ☕`
+        // 10種文案 (拆分成標題與專屬台詞)
+        const boostVariations = [
+            { title: '🌸 星光閃耀！感謝加成 🌸', text: '**太感動啦！** 你的支持化作了滿天星光，點亮了整個 ENDLESS！✨' },
+            { title: '💖 愛心爆擊！伺服器升級 💖', text: '**滴答滴答！** 是誰送來了滿滿的愛？超級感謝你的加成火力支援！😍' },
+            { title: '🚀 動力引擎啟動！ 🚀', text: '**轟隆隆！** 因為你的專屬加成，公會正全速向更棒的未來起飛啦！🛸' },
+            { title: '🏰 ENDLESS 的堅固基石 🏰', text: '**致敬守護者！** 每一座偉大的城堡，都需要最堅固的基石，感謝贊助！🛡️' },
+            { title: '💎 尊榮 VIP 降臨 💎', text: '**粉紅徽章亮起！** 讓我們掌聲歡迎 VIP，這份心意我們一定會好好珍惜！✨' },
+            { title: '🌟 奇蹟守護者 🌟', text: '**無私奉獻！** 你的支持就像守護 ENDLESS 的魔法護盾，讓伺服器與眾不同！🔮' },
+            { title: '🍷 酒館的最強金主 🍷', text: '**大金主降臨！** 謝謝老闆幫公會酒館升級高級沙發，讓我們敬你一杯！🍻' },
+            { title: '👑 無可取代的寶藏 👑', text: '**捕捉到寶藏！** 系統偵測到一枚閃閃發光的寶藏夥伴，你絕對是最珍貴的！🎁' },
+            { title: '🎆 煙火為你綻放 🎆', text: '**砰砰砰！** 因為你的加成，伺服器的夜空綻放了最美的專屬煙火！🎇' },
+            { title: '🎀 溫暖的擁抱 🎀', text: '**溫暖的擁抱！** 你的支持就像冬天裡的一杯熱可可，暖暖地流進了我們心裡... ☕' }
         ];
 
-        const randomText = boostDescriptions[Math.floor(Math.random() * boostDescriptions.length)];
+        const randomChoice = boostVariations[Math.floor(Math.random() * boostVariations.length)];
 
-        // 🌟 打造高質感 Embed (採用條列式少女排版設計)
+        // 🌟 打造高質感 Embed
         const thankYouEmbed = new EmbedBuilder()
             .setColor('#FF99CC') // 溫暖粉紅色邊框
             .setAuthor({ 
-                name: member.displayName, // 左上角顯示群組暱稱
-                iconURL: member.user.displayAvatarURL({ dynamic: true }) // 左上角大頭貼
+                name: member.displayName, 
+                iconURL: member.user.displayAvatarURL({ dynamic: true }) 
             })
-            .setTitle('💖 THANK YOU FOR YOUR BOOST 💖')
+            .setTitle(randomChoice.title) 
             .setDescription(
-                `🌞 🌞 🌞 🌞 🌞 🌞 🌞 🌞 🌞 🌞\n\n` +
-                `• 嘻嘻謝謝泥！<@${member.id}> 💕\n` +
-                `　↳ ${randomText}\n` +
-                `• 目前伺服器累計已有【 ✨ **${boostCount} 個加成** ✨ 】\n` +
-                `• 專屬特權與頻道已經解鎖囉！貼心小助手已經私訊發送出場音效設定給您，趕緊去看看吧 💌\n\n` +
-                `🌞 🌞 🌞 🌞 🌞 🌞 🌞 🌞 🌞 🌞`
+                `💖 **Thank you for Ur boost** 💖\n\n` +
+                `${randomChoice.text}\n` + 
+                `• 目前伺服器累計已有 ✨ **${boostCount} 個加成** ✨ \n` +
+                `• 解鎖屬於您的出場BGM以及盛大歡迎！貼心小助手已經私訊出場音效設定給您，趕緊去看看吧 💌`
             )
-            .setThumbnail('https://cdn.discordapp.com/attachments/1539719568065560656/1540960580975886407/star_icon.png') // 右上角可愛裝飾圖 (可替換)
-            .setImage(randomImage) // 隨機橫幅大圖
-            .setFooter({ text: `感謝您的貢獻與努力，祝您一切順利 🤍`, iconURL: member.guild.iconURL() })
+            .setThumbnail(member.user.displayAvatarURL({ dynamic: true })) 
+            .setImage(randomImage) 
+            .setFooter({ text: `ENDLESS 感謝您的支持與陪伴，祝您一切順利 🤍`, iconURL: member.guild.iconURL() }) 
             .setTimestamp();
 
         // 獨立於 Embed 之外的 ping 訊息
@@ -394,6 +392,9 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
     }
 });
 
+// ==========================================
+// 🚀 Booster 星光紅毯系統 (結合私訊與自動刪除機制)
+// ==========================================
 client.on('messageCreate', async message => {
     if (message.author.bot || message.channel.id !== config.channels.chatLounge) return;
 
@@ -407,13 +408,23 @@ client.on('messageCreate', async message => {
 
             if (data.optOut || data.lastRedCarpet === todayStr) return;
 
+            // 1. 發送公開的浮誇台詞
             let randomMsg = boosterRedCarpetMessages[Math.floor(Math.random() * boosterRedCarpetMessages.length)](`<@${message.author.id}>`);
+            await message.channel.send(randomMsg);
             
+            // 2. 如果是第一次觸發，採用私訊或閱後即焚方式給予貼心小提醒
             if (!data.hasSeenHint) {
-                randomMsg += `\n\n*(💡 貼心小提醒：這是 Booster 專屬的浮誇進場特權喔！如果您覺得太高調，隨時可以使用 \`/星光紅毯設定\` 指令關閉它！)*`;
+                try {
+                    // 嘗試私訊玩家
+                    await message.author.send(`✨ **關於您的專屬紅毯進場** ✨\n*(💡 貼心小提醒：剛剛在 <#${message.channel.id}> 的浮誇進場是 Booster 專屬特權喔！如果您覺得太高調，隨時可以在伺服器聊天頻道輸入 \`/星光紅毯設定\` 指令將其關閉！)*`);
+                } catch (e) {
+                    // 若玩家關閉私訊，改發在頻道並設定 15 秒後自動刪除
+                    const hintMsg = await message.channel.send(`<@${message.author.id}> *(💡 貼心小提醒：這是 Booster 專屬特權喔！若覺得太高調，隨時可使用 \`/星光紅毯設定\` 關閉。此提示 15 秒後自動刪除)*`);
+                    setTimeout(() => hintMsg.delete().catch(() => null), 15000);
+                }
             }
 
-            await message.channel.send(randomMsg);
+            // 更新資料庫
             await docRef.set({ lastRedCarpet: todayStr, hasSeenHint: true }, { merge: true });
 
         } catch (err) { console.error('❌ 星光紅毯觸發失敗：', err); }
