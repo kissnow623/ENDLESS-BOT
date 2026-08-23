@@ -33,6 +33,16 @@ if (serviceAccount && !admin.apps.length) {
 const db = admin.firestore();
 
 // ==========================================
+// 👑 幹部與管理員設定專區
+// ==========================================
+// 只要擁有以下任何一個身分組 ID 的成員，就能使用所有管理指令！
+const ADMIN_ROLES = [
+    '1539508532846526494', // 幹部身分組 1
+    '1539959330726486036'  // 幹部身分組 2
+    // 💡 未來如果有新增副會長、長老等身分組，只要加在這裡並用單引號包起來、逗號隔開即可！
+];
+
+// ==========================================
 // 🔧 2️⃣ 參數設定區
 // ==========================================
 const config = {
@@ -45,7 +55,7 @@ const config = {
         chatLounge: '1539904561941188608'   // 🌟 星光紅毯鋪設頻道
     },
     roles: {
-        adminRoles: ['1539508532846526494', '1539959330726486036'], 
+        adminRoles: ADMIN_ROLES, // 👈 這裡會自動讀取上方的專區設定
         guildMember: '1539959985797341184',
         familyFriend: '1539960787882475591',
         classes: {
@@ -58,6 +68,7 @@ const config = {
         }
     }
 };
+
 const classOptionsList = Object.keys(config.roles.classes).map(className => 
     new StringSelectMenuOptionBuilder().setLabel(className).setValue(className)
 );
