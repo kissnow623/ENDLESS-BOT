@@ -41,17 +41,21 @@ const ADMIN_ROLES = [
 ];
 
 // ==========================================
-// 🔧 2️⃣ 參數設定區
+// 🔧 2️⃣ 參數設定區與總開關
 // ==========================================
 const config = {
     guildId: '1539475243733622794', 
+    features: {
+        // 🌟 星光紅毯總開關：false (關閉隱藏), true (開啟啟用)
+        redCarpetEnabled: false 
+    },
     channels: { 
         approval: '1539972747545808937',
         welcome: '1539971422842261601',       
         welcomeFriend: '1539904561941188608',
         boostThanks: '1540726577443115109', // 🌟 Server Boost 感謝卡推播頻道
         chatLounge: '1539904561941188608',   // 🌟 星光紅毯鋪設頻道
-        leaderboardChannel: '這裡填入你想要發布排行榜的頻道ID' 
+        leaderboardChannel: '這裡填入你想要發布排行榜的頻道ID' // 🌟 新增：每月自動發布排行榜的頻道
     },
     roles: {
         adminRoles: ADMIN_ROLES, 
@@ -99,7 +103,7 @@ const welcomeFriendMessages = [
     (userId) => `🚀 咻～的一聲，<@${userId}> 飛進了我們的親友團！很高興認識你，快去頻道跟大家打個招呼吧！👋`
 ];
 
-// Booster：30 款浮誇出場台詞
+// Booster：30 款浮誇出場台詞 (暫時隱藏不使用)
 const boosterRedCarpetMessages = [
     (user) => `✨ 閃開閃開！尊貴的 Booster ${user} 降臨啦！全體起立！`,
     (user) => `👑 王者歸來！${user} 踏著七彩祥雲出現了，大家快膜拜！`,
@@ -203,15 +207,11 @@ async function generateFriendLeaderboard() {
 // 🌟 共用核心函式：發布高質感加成感謝卡片
 // ==========================================
 async function checkAndThankBooster(member, boostChannel, mode = 'normal', interaction = null) {
-    // mode 說明: 'normal' = 正常自動檢查, 'test' = 私密測試預覽, 'replay' = 強制重新廣播
-    
-    // 如果是正常自動檢查且沒有 premiumSince，就不處理
     if (mode === 'normal' && !member.premiumSince) return false;
 
     const docRef = db.collection('boostedUsers').doc(member.id);
     const doc = await docRef.get();
 
-    // 只有在 'normal' 模式下，才去檢查資料庫防重複。'test' 或 'replay' 都直接放行
     if (mode === 'normal' && doc.exists) return false;
 
     try {
@@ -240,8 +240,8 @@ async function checkAndThankBooster(member, boostChannel, mode = 'normal', inter
             .setDescription(
                 `💖 **Thank you for Ur boost** 💖\n\n` +
                 `${randomChoice.text}\n\n` + 
-                `• 目前伺服器累計已有 ✨ **${boostCount} 個加成** ✨ \n` +
-                `• 已解鎖屬於您的出場BGM以及盛大歡迎！貼心小助手已經私訊出場音效設定給您，趕緊去看看吧 💌`
+                `• 目前伺服器累計已有\n ✨ **${boostCount} 個加成** ✨ \n\n` +
+                `• 已解鎖屬於您的專屬出場 BGM！\n 貼心小助手已經私訊音效設定教學給您，趕緊去看看吧 💌`
             )
             .setThumbnail(member.user.displayAvatarURL({ dynamic: true })) 
             .setImage(randomImage) 
@@ -252,20 +252,16 @@ async function checkAndThankBooster(member, boostChannel, mode = 'normal', inter
         if (mode === 'test') {
             pingContent = `🎊 **[私密測試預覽] <@${member.id}> 觸發了伺服器感謝加成 💕** 🎊`;
         } else if (mode === 'replay') {
-            // 讓重播的文字看起來自然一點，可以加上 [經典重現] 等小提示，如果不需要也可以保持原樣
             pingContent = `🎊 **[經典回顧] 再次感謝 <@${member.id}> 對伺服器的偉大加成 💕** 🎊`;
         }
 
         let sentMessage = null;
 
-        // 如果是測試模式，私密回傳給幹部
         if (mode === 'test' && interaction) {
             sentMessage = await interaction.editReply({ content: pingContent, embeds: [thankYouEmbed], fetchReply: true });
         } else if (boostChannel) {
-            // 正常或重播模式，公開發佈到感謝頻道
             sentMessage = await boostChannel.send({ content: pingContent, embeds: [thankYouEmbed] });
             
-            // 🌟 灑花機制：當機器人在公開頻道發出卡片時，自動加上反應特效
             if (sentMessage) {
                 try {
                     await sentMessage.react('🎉');
@@ -276,12 +272,11 @@ async function checkAndThankBooster(member, boostChannel, mode = 'normal', inter
             }
         }
 
-        // 只有正常模式 (首次感謝) 才需要發送私訊和寫入資料庫
         if (mode === 'normal') {
             const tutorialEmbed = new EmbedBuilder()
                 .setColor('#FFD700')
-                .setTitle('🎶 【 Booster 專屬特權：巨星紅毯進場 BGM 設定指南 】 🎶')
-                .setDescription(`🎀 **叮咚！親愛的乾爹/乾媽您好！(抱大腿)**\n超級無敵感謝您用閃亮亮的 Server Boost 支持 ENDLESS 呀！🥰\n\n你知道嗎？身為尊貴的 Booster，Discord 有送您一個超神氣的隱藏特權喔！就是——**「專屬語音進場 BGM」**！✨\n\n只要設定好，以後您每次踩進公會的語音頻道，系統就會自動幫您播專屬的出場配樂！是不是超有排場、超像巨星登場！😎\n\n👇 **快跟著我的超簡單 3 步驟把專屬 BGM 裝起來吧：**\n\n**Step 1.** 點擊 Discord 左下角您的名字旁邊的 ⚙️ **「使用者設定 (小齒輪)」**。\n**Step 2.** 在左邊清單找到 🔊 **「語音和視訊」**。\n**Step 3.** 往下滾動找到 **「音效板 (Soundboard)」** 區塊，點一下 **「入用語音頻道音效」** 右邊的 ✏️ 鉛筆圖示，就可以挑選您最愛的音效啦！\n\n*(💡 悄悄話：您可以直接選我們 ENDLESS 伺服器自己專屬的可愛音效喔！趕快去挑一首，今晚來語音頻道讓我們驚豔一下吧！等您的華麗登場唷～～🚀)*`)
+                .setTitle('🎶 【 Booster 專屬特權：語音頻道出場 BGM 設定指南 】 🎶')
+                .setDescription(`🎀 **叮咚！親愛的乾爹/乾媽您好！(抱大腿)**\n超級無敵感謝您用閃亮亮的 Server Boost 支持 ENDLESS 呀！🥰\n\n你知道嗎？身為尊貴的 Booster，Discord 有送您一個超神氣的隱藏特權喔！就是——**「專屬語音進場 BGM」**！✨\n\n只要設定好，以後您每次踩進公會的語音頻道，系統就會自動幫您播專屬的出場配樂！是不是超有排場、超像巨星登場！😎\n\n👇 **快跟著我的超簡單 3 步驟把專屬 BGM 裝起來吧：**\n\n**Step 1.** 點擊 Discord 左下角您的名字旁邊的 ⚙️ **「使用者設定 (小齒輪)」**。\n**Step 2.** 在左邊清單找到 🔊 **「語音和視訊」**。\n**Step 3.** 往下滾動找到 **「音效板 (Soundboard)」** 區塊，點一下 **「入用語音頻道音效」** 右邊的 ✏️ 鉛筆圖示，就可以挑選您最愛的音效啦！\n\n*(💡 悄悄話：您可以直接選我們 ENDLESS 伺服器自己專屬的可愛音效喔！趕快去挑一首，今晚來語音頻道讓我們驚豔一下吧！)*`)
                 .setFooter({ text: 'ENDLESS 專屬貼心小秘書', iconURL: member.guild.iconURL() });
 
             await member.send({ embeds: [tutorialEmbed] }).catch(() => {});
@@ -314,6 +309,7 @@ client.once('clientReady', async () => {
     console.log(`🤖 機器人登入成功：${client.user.tag}!`);
     const adminPerms = PermissionFlagsBits.Administrator.toString();
 
+    // 🌟 星光紅毯設定指令被註解隱藏，不會顯示在指令清單中
     const commands = [
         { name: '解鎖權限', description: '發布加入 ENDLESS 或是成為親友團的申請面板 (僅限幹部)', default_member_permissions: adminPerms },
         { name: '發布小指南', description: '發布 ENDLESS 實用功能小指南面板 (僅限幹部)', default_member_permissions: adminPerms },
@@ -322,7 +318,6 @@ client.once('clientReady', async () => {
         { name: '同步更名', description: '批次同步資料庫中所有成員的最新暱稱格式與符號 (僅限幹部)', default_member_permissions: adminPerms },
         { name: '檢查補發感謝', description: '【幹部專屬】掃描伺服器所有加成者，自動為錯過的乾爹乾媽補發感謝卡！', default_member_permissions: adminPerms },
         { name: '測試感謝卡', description: '【幹部專屬】發送一張私密測試用的加成感謝卡 (僅自己可見)', default_member_permissions: adminPerms },
-        // 🌟 新增：重播感謝卡指令，允許幹部選擇特定使用者
         { 
             name: '重播感謝卡', 
             description: '【幹部專屬】強制公開重播指定玩家的加成感謝卡 (不管以前有沒有發過)', 
@@ -336,8 +331,10 @@ client.once('clientReady', async () => {
         {
             name: '清除訊息', description: '快速清除當前頻道指定數量的訊息 (僅限幹部)', default_member_permissions: adminPerms,
             options: [{ name: '數量', description: '請輸入要清除的訊息數量 (1 到 100)', type: ApplicationCommandOptionType.Integer, required: true, min_value: 1, max_value: 100 }]
-        },
-        {
+        }
+        /* 
+        🌟 未來如果需要重新開放，只要把這段註解解開即可
+        ,{
             name: '星光紅毯設定',
             description: '【Booster專屬】開啟或關閉您每日首次發言的浮誇出場台詞！',
             options: [{
@@ -345,6 +342,7 @@ client.once('clientReady', async () => {
                 choices: [ { name: '🟢 開啟浮誇出場', value: 'on' }, { name: '🔴 關閉低調潛水', value: 'off' } ]
             }]
         }
+        */
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -353,7 +351,6 @@ client.once('clientReady', async () => {
         console.log('✅ 指令註冊完成！');
     } catch (error) { console.error('❌ 指令註冊失敗：', error); }
 
-    // 啟動自動掃描補發
     try {
         const guild = client.guilds.cache.get(config.guildId);
         if (guild) {
@@ -362,7 +359,6 @@ client.once('clientReady', async () => {
                 const members = await guild.members.fetch();
                 for (const [id, member] of members) {
                     if (member.premiumSince) {
-                        // 'normal' 模式會自動檢查資料庫
                         await checkAndThankBooster(member, boostChannel, 'normal');
                         await new Promise(resolve => setTimeout(resolve, 300));
                     }
@@ -372,7 +368,6 @@ client.once('clientReady', async () => {
         }
     } catch (err) { console.error('❌ 啟動掃描加成者失敗：', err); }
     
-    // 啟動每個月初自動發布排行榜
     scheduleMonthlyLeaderboard();
 });
 
@@ -417,9 +412,12 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 });
 
 // ==========================================
-// 🚀 Booster 星光紅毯系統 (結合私訊與自動刪除機制)
+// 🚀 Booster 星光紅毯系統 (目前預設關閉)
 // ==========================================
 client.on('messageCreate', async message => {
+    // 🌟 如果總開關是 false，直接略過所有紅毯邏輯
+    if (!config.features.redCarpetEnabled) return;
+
     if (message.author.bot || message.channel.id !== config.channels.chatLounge) return;
 
     if (message.member && message.member.premiumSince) {
@@ -432,23 +430,18 @@ client.on('messageCreate', async message => {
 
             if (data.optOut || data.lastRedCarpet === todayStr) return;
 
-            // 1. 發送公開的浮誇台詞
             let randomMsg = boosterRedCarpetMessages[Math.floor(Math.random() * boosterRedCarpetMessages.length)](`<@${message.author.id}>`);
             await message.channel.send(randomMsg);
             
-            // 2. 如果是第一次觸發，採用私訊或閱後即焚方式給予貼心小提醒
             if (!data.hasSeenHint) {
                 try {
-                    // 嘗試私訊玩家
                     await message.author.send(`✨ **關於您的專屬紅毯進場** ✨\n*(💡 貼心小提醒：剛剛在 <#${message.channel.id}> 的浮誇進場是 Booster 專屬特權喔！如果您覺得太高調，隨時可以在伺服器聊天頻道輸入 \`/星光紅毯設定\` 指令將其關閉！)*`);
                 } catch (e) {
-                    // 若玩家關閉私訊，改發在頻道並設定 15 秒後自動刪除
                     const hintMsg = await message.channel.send(`<@${message.author.id}> *(💡 貼心小提醒：這是 Booster 專屬特權喔！若覺得太高調，隨時可使用 \`/星光紅毯設定\` 關閉。此提示 15 秒後自動刪除)*`);
                     setTimeout(() => hintMsg.delete().catch(() => null), 15000);
                 }
             }
 
-            // 更新資料庫
             await docRef.set({ lastRedCarpet: todayStr, hasSeenHint: true }, { merge: true });
 
         } catch (err) { console.error('❌ 星光紅毯觸發失敗：', err); }
@@ -476,11 +469,11 @@ client.on('interactionCreate', async interaction => {
                 return interaction.editReply('✨ 設定成功！已為您開啟浮誇紅毯模式！明天在綜合大廳發言時就會為您鋪上紅毯囉！🌹');
             }
 
+            // 確保權限控管
             if ((cmd === '解鎖權限' || cmd === '發布小指南' || cmd === '查詢目前公會成員' || cmd === '查詢目前親友團' || cmd === '同步更名' || cmd === '檢查補發感謝' || cmd === '測試感謝卡' || cmd === '重播感謝卡' || cmd === '清除資料' || cmd === '清除訊息') && !isOwner && !hasAdminRole && !hasAdminPerm) {
                 return interaction.reply({ content: '❌ 很抱歉，此指令僅限幹部使用。', ephemeral: true });
             }
 
-            // 🌟 測試感謝卡 (僅自己可見的私密預覽)
             if (cmd === '測試感謝卡') {
                 await interaction.deferReply({ ephemeral: true });
                 const boostChannel = await interaction.guild.channels.fetch(config.channels.boostThanks).catch(() => null);
@@ -488,25 +481,17 @@ client.on('interactionCreate', async interaction => {
                 return;
             }
 
-            // 🌟 重播感謝卡 (幹部強制重新廣播特定玩家)
             if (cmd === '重播感謝卡') {
-                await interaction.deferReply({ ephemeral: true }); // 先讓幹部收到私密等待回覆
+                await interaction.deferReply({ ephemeral: true }); 
                 const targetUser = interaction.options.getUser('玩家');
                 const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
 
-                if (!targetMember) {
-                    return interaction.editReply('❌ 找不到該成員，他可能已經離開伺服器了。');
-                }
-                if (!targetMember.premiumSince) {
-                    return interaction.editReply(`❌ <@${targetUser.id}> 目前**不是**伺服器加成者喔！無法發送感謝卡。`);
-                }
+                if (!targetMember) return interaction.editReply('❌ 找不到該成員，他可能已經離開伺服器了。');
+                if (!targetMember.premiumSince) return interaction.editReply(`❌ <@${targetUser.id}> 目前**不是**伺服器加成者喔！無法發送感謝卡。`);
 
                 const boostChannel = await interaction.guild.channels.fetch(config.channels.boostThanks).catch(() => null);
-                if (!boostChannel) {
-                    return interaction.editReply('❌ 找不到感謝卡發佈頻道，請檢查設定。');
-                }
+                if (!boostChannel) return interaction.editReply('❌ 找不到感謝卡發佈頻道，請檢查設定。');
 
-                // 強制使用 'replay' 模式，這會跳過資料庫的「是否已感謝過」檢查，直接在頻道公開灑花！
                 const success = await checkAndThankBooster(targetMember, boostChannel, 'replay', interaction);
 
                 if (success) {
