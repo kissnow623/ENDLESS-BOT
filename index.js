@@ -35,11 +35,9 @@ const db = admin.firestore();
 // ==========================================
 // 👑 幹部與管理員設定專區
 // ==========================================
-// 只要擁有以下任何一個身分組 ID 的成員，就能使用所有管理指令！
 const ADMIN_ROLES = [
     '1539508532846526494', // 幹部身分組 1
     '1539959330726486036'  // 幹部身分組 2
-    // 💡 未來如果有新增副會長、長老等身分組，只要加在這裡並用單引號包起來、逗號隔開即可！
 ];
 
 // ==========================================
@@ -55,7 +53,7 @@ const config = {
         chatLounge: '1539904561941188608'   // 🌟 星光紅毯鋪設頻道
     },
     roles: {
-        adminRoles: ADMIN_ROLES, // 👈 這裡會自動讀取上方的專區設定
+        adminRoles: ADMIN_ROLES, 
         guildMember: '1539959985797341184',
         familyFriend: '1539960787882475591',
         classes: {
@@ -68,7 +66,6 @@ const config = {
         }
     }
 };
-
 const classOptionsList = Object.keys(config.roles.classes).map(className => 
     new StringSelectMenuOptionBuilder().setLabel(className).setValue(className)
 );
@@ -89,7 +86,7 @@ const welcomeMessages = [
 
 // 🌟 親友團：10 款專屬隨機迎新
 const welcomeFriendMessages = [
-    (userId) => `🎈 叮咚！ENDLESS 迎來了一位超酷的親友團新夥伴！<@${userId}> 已經解鎖頻道囉～大家快把最熱情的貼圖刷起來！🔥🔥`,
+    (userId) => `🎈 叮咚！ENDLESS 迎來了一位超酷的親友團新夥伴！<@${userId}> 已經順利解鎖頻道囉～大家快把最熱情的貼圖刷起來！🔥🔥`,
     (userId) => `🌟 閃亮登場！歡迎親友團的新朋友 <@${userId}> 來到 ENDLESS！隨便坐隨便聊，當自己家就好啦！🛋️`,
     (userId) => `🎶 聽，是新朋友的腳步聲！歡迎 <@${userId}> 加入 ENDLESS 的親友團！快來跟大家分享你的冒險故事吧！⛺`,
     (userId) => `🍰 新鮮出爐的親友團夥伴來囉！<@${userId}> 歡迎來到 ENDLESS！肚子餓了有餅乾，無聊了有人陪聊喔！🍪`,
@@ -119,7 +116,7 @@ const boosterRedCarpetMessages = [
     (user) => `🎤 聚光燈準備！把麥克風交給我們最耀眼的 ${user}！`,
     (user) => `🏆 冠軍進場！大家讓一讓，${user} 帶著氣場走來啦！`,
     (user) => `💸 財神爺下凡啦！${user} 駕到，還不快沾沾喜氣！`,
-    (user) => `🛡️ 最強守護者 ${user} 已連線，今天的公會依然和平！`,
+    (user) => `🛡️ 最強守護者 ${user} 已連線，bindingFields 今天的公會依然和平！`,
     (user) => `🍀 幸運草精靈 ${user} 出現！今天跟著大佬一定會掉寶！`,
     (user) => `🌊 氣場太強啦！${user} 帶著海嘯般的魅力席捲而來！`,
     (user) => `🎀 拆開蝴蝶結，裡面是我們最喜歡的 ${user} 耶！`,
@@ -134,6 +131,56 @@ const boosterRedCarpetMessages = [
     (user) => `🐾 捕捉到超萌野生 ${user}！快點摸摸頭沾好運！`,
     (user) => `🎊 撒花！${user} 榮耀登入，今天的頻道絕對精彩！`
 ];
+
+// 🌟 共用核心函式：發布加成感謝卡片與私訊，並寫入資料庫防重複
+async function checkAndThankBooster(member, boostChannel) {
+    if (!member.premiumSince) return false;
+
+    const docRef = db.collection('boostedUsers').doc(member.id);
+    const doc = await docRef.get();
+
+    // 如果資料庫沒有記錄，代表這是一位「從未被感謝過」的加成者！
+    if (!doc.exists) {
+        try {
+            if (boostChannel) {
+                const boostEmbeds = [
+                    new EmbedBuilder().setColor('#FF73FA').setTitle('🌸 【星光閃耀！感謝加成】').setDescription(`**太感動啦！** 你的支持化作了滿天星光，點亮了整個 ENDLESS 伺服器！✨\n感謝 <@${member.id}> 成為我們最耀眼的 Server Booster！`),
+                    new EmbedBuilder().setColor('#FF73FA').setTitle('💖 【愛心爆擊！伺服器升級】').setDescription(`滴答滴答！是誰送來了滿滿的愛？😍\n超級感謝 <@${member.id}> 的加成火力支援，你的心意是公會成長的最強動力！`),
+                    new EmbedBuilder().setColor('#FF73FA').setTitle('🚀 【動力引擎啟動！】').setDescription(`轟隆隆！因為 <@${member.id}> 的專屬加成，我們的公會正全速向更棒的未來起飛啦！🛸\n謝謝你願意把這份珍貴的禮物留給我們！`),
+                    new EmbedBuilder().setColor('#FF73FA').setTitle('🏰 【ENDLESS 的堅固基石】').setDescription(`每一座偉大的城堡，都需要最堅固的基石！🛡️\n向我們尊貴的守護者 <@${member.id}> 致敬，感謝你的加成贊助！`),
+                    new EmbedBuilder().setColor('#FF73FA').setTitle('💎 【尊榮 VIP 降臨】').setDescription(`閃閃發光的粉紅徽章亮起！✨\n讓我們掌聲歡迎 <@${member.id}> 用行動支持 ENDLESS，這份心意我們一定會好好珍惜！`),
+                    new EmbedBuilder().setColor('#FF73FA').setTitle('🌟 【奇蹟守護者】').setDescription(`你的無私奉獻，就像守護 ENDLESS 的魔法護盾！🔮\n超級感謝 <@${member.id}> 的加成，讓我們的伺服器變得更加與眾不同！`),
+                    new EmbedBuilder().setColor('#FF73FA').setTitle('🍷 【酒館的最強金主】').setDescription(`快看！是誰幫公會酒館升級了高級沙發？🛋️\n讓我們敬 <@${member.id}> 一杯，謝謝老闆的熱情加成贊助！（乾杯🍻）`),
+                    new EmbedBuilder().setColor('#FF73FA').setTitle('👑 【無可取代的寶藏】').setDescription(`滴! 系統偵測到一枚閃閃發光的寶藏夥伴！🎁\n萬分感謝 <@${member.id}> 對伺服器的加成，你絕對是公會最珍貴的寶物！`),
+                    new EmbedBuilder().setColor('#FF73FA').setTitle('🎆 【煙火為你綻放】').setDescription(`砰！因為你的加成，伺服器的夜空綻放了最美的專屬煙火！🎇\n感謝 <@${member.id}>，ENDLESS 因為有你而更加精采！`),
+                    new EmbedBuilder().setColor('#FF73FA').setTitle('🎀 【溫暖的擁抱】').setDescription(`你的支持就像冬天裡的一杯熱可可，暖暖地流進了我們心裡... ☕\n謝謝 <@${member.id}> 的加成贊助，愛你喔！🥰`)
+                ];
+
+                const randomEmbed = boostEmbeds[Math.floor(Math.random() * boostEmbeds.length)]
+                    .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+                    .setFooter({ text: 'ENDLESS 感謝您的支持與陪伴', iconURL: member.guild.iconURL() })
+                    .setTimestamp();
+
+                await boostChannel.send({ content: `🎊 **狂賀！伺服器收到了一份珍貴的禮物！** 🎊`, embeds: [randomEmbed] });
+            }
+
+            const tutorialEmbed = new EmbedBuilder()
+                .setColor('#FFD700')
+                .setTitle('🎶 【 Booster 專屬特權：巨星紅毯進場 BGM 設定指南 】 🎶')
+                .setDescription(`🎀 **叮咚！親愛的乾爹/乾媽您好！(抱大腿)**\n超級無敵感謝您用閃亮亮的 Server Boost 支持 ENDLESS 呀！🥰\n\n你知道嗎？身為尊貴的 Booster，Discord 有送您一個超神氣的隱藏特權喔！就是——**「專屬語音進場 BGM」**！✨\n\n只要設定好，以後您每次踩進公會的語音頻道，系統就會自動幫您播專屬的出場配樂！是不是超有排場、超像巨星登場！😎\n\n👇 **快跟著我的超簡單 3 步驟把專屬 BGM 裝起來吧：**\n\n**Step 1.** 點擊 Discord 左下角您的名字旁邊的 ⚙️ **「使用者設定 (小齒輪)」**。\n**Step 2.** 在左邊清單找到 🔊 **「語音和視訊」**。\n**Step 3.** 往下滾動找到 **「音效板 (Soundboard)」** 區塊，點一下 **「入用語音頻道音效」** 右邊的 ✏️ 鉛筆圖示，就可以挑選您最愛的音效啦！\n\n*(💡 悄悄話：您可以直接選我們 ENDLESS 伺服器自己專屬的可愛音效喔！趕快去挑一首，今晚來語音頻道讓我們驚豔一下吧！等您的華麗登場唷～～🚀)*`)
+                .setFooter({ text: 'ENDLESS 專屬貼心小秘書', iconURL: member.guild.iconURL() });
+
+            await member.send({ embeds: [tutorialEmbed] }).catch(() => {});
+
+            // 寫入資料庫，標記該會員已經感謝過了！
+            await docRef.set({ thankedAt: admin.firestore.FieldValue.serverTimestamp(), tag: member.user.tag });
+            return true;
+        } catch (err) {
+            console.error('❌ 處理加成感謝失敗：', err);
+        }
+    }
+    return false;
+}
 
 async function updateNickname(member, gameName, roleType, classesArray) {
     const icon = roleType === '公會成員' ? '🌟' : '🍁';
@@ -170,6 +217,7 @@ client.once('clientReady', async () => {
         { name: '查詢目前公會成員', description: '查詢公會成員列表與總人數 (僅限幹部)', default_member_permissions: adminPerms },
         { name: '查詢目前親友團', description: '查詢親友團成員列表與總人數 (僅限幹部)', default_member_permissions: adminPerms },
         { name: '同步更名', description: '批次同步資料庫中所有成員的最新暱稱格式與符號 (僅限幹部)', default_member_permissions: adminPerms },
+        { name: '檢查補發感謝', description: '【幹部專屬】掃描伺服器所有加成者，自動為錯過的乾爹乾媽補發感謝卡！', default_member_permissions: adminPerms }, // 🌟 新增補發指令
         { 
             name: '清除資料', description: '清除指定成員的資料庫紀錄與身分組 (僅限幹部)', default_member_permissions: adminPerms,
             options: [{ name: '目標', description: '請選擇要重置資料的成員', type: ApplicationCommandOptionType.User, required: true }]
@@ -187,53 +235,43 @@ client.once('clientReady', async () => {
             }]
         }
     ];
+
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
         await rest.put(Routes.applicationGuildCommands(process.env.CLIENT_ID, config.guildId), { body: commands });
         console.log('✅ 指令註冊完成！');
     } catch (error) { console.error('❌ 指令註冊失敗：', error); }
+
+    // ==========================================
+    // 🛡️ 啟動自動恢復機制 (解決 Render 睡著漏掉事件的問題)
+    // ==========================================
+    try {
+        const guild = client.guilds.cache.get(config.guildId);
+        if (guild) {
+            const boostChannel = await client.channels.fetch(config.channels.boostThanks).catch(() => null);
+            if (boostChannel) {
+                const members = await guild.members.fetch();
+                for (const [id, member] of members) {
+                    if (member.premiumSince) {
+                        await checkAndThankBooster(member, boostChannel);
+                        await new Promise(resolve => setTimeout(resolve, 300)); // 避免 API 過載
+                    }
+                }
+                console.log('✅ 啟動加成狀態掃描完成：所有漏網的乾爹乾媽已全數補發感謝！');
+            }
+        }
+    } catch (err) {
+        console.error('❌ 啟動掃描加成者失敗：', err);
+    }
 });
 
 // ==========================================
-// 🚀 Server Boost 加成感謝系統與私訊小秘書
+// 🚀 リアルタイム即時監聽加成事件
 // ==========================================
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
     if (!oldMember.premiumSince && newMember.premiumSince) {
-        try {
-            const boostChannel = await client.channels.fetch(config.channels.boostThanks);
-            if (boostChannel) {
-                const boostEmbeds = [
-                    new EmbedBuilder().setColor('#FF73FA').setTitle('🌸 【星光閃耀！感謝加成】').setDescription(`**太感動啦！** 你的支持化作了滿天星光，點亮了整個 ENDLESS 伺服器！✨\n感謝 <@${newMember.id}> 成為我們最耀眼的 Server Booster！`),
-                    new EmbedBuilder().setColor('#FF73FA').setTitle('💖 【愛心爆擊！伺服器升級】').setDescription(`滴答滴答！是誰送來了滿滿的愛？😍\n超級感謝 <@${newMember.id}> 的加成火力支援，你的心意是公會成長的最強動力！`),
-                    new EmbedBuilder().setColor('#FF73FA').setTitle('🚀 【動力引擎啟動！】').setDescription(`轟隆隆！因為 <@${newMember.id}> 的專屬加成，我們的公會正全速向更棒的未來起飛啦！🛸\n謝謝你願意把這份珍貴的禮物留給我們！`),
-                    new EmbedBuilder().setColor('#FF73FA').setTitle('🏰 【ENDLESS 的堅固基石】').setDescription(`每一座偉大的城堡，都需要最堅固的基石！🛡️\n向我們尊貴的守護者 <@${newMember.id}> 致敬，感謝你的加成贊助！`),
-                    new EmbedBuilder().setColor('#FF73FA').setTitle('💎 【尊榮 VIP 降臨】').setDescription(`閃閃發光的粉紅徽章亮起！✨\n讓我們掌聲歡迎 <@${newMember.id}> 用行動支持 ENDLESS，這份心意我們一定會好好珍惜！`),
-                    new EmbedBuilder().setColor('#FF73FA').setTitle('🌟 【奇蹟守護者】').setDescription(`你的無私奉獻，就像守護 ENDLESS 的魔法護盾！🔮\n超級感謝 <@${newMember.id}> 的加成，讓我們的伺服器變得更加與眾不同！`),
-                    new EmbedBuilder().setColor('#FF73FA').setTitle('🍷 【酒館的最強金主】').setDescription(`快看！是誰幫公會酒館升級了高級沙發？🛋️\n讓我們敬 <@${newMember.id}> 一杯，謝謝老闆的熱情加成贊助！（乾杯🍻）`),
-                    new EmbedBuilder().setColor('#FF73FA').setTitle('👑 【無可取代的寶藏】').setDescription(`滴！系統偵測到一枚閃閃發光的寶藏夥伴！🎁\n萬分感謝 <@${newMember.id}> 對伺服器的加成，你絕對是公會最珍貴的寶物！`),
-                    new EmbedBuilder().setColor('#FF73FA').setTitle('🎆 【煙火為你綻放】').setDescription(`砰！因為你的加成，伺服器的夜空綻放了最美的專屬煙火！🎇\n感謝 <@${newMember.id}>，ENDLESS 因為有你而更加精采！`),
-                    new EmbedBuilder().setColor('#FF73FA').setTitle('🎀 【溫暖的擁抱】').setDescription(`你的支持就像冬天裡的一杯熱可可，暖暖地流進了我們心裡... ☕\n謝謝 <@${newMember.id}> 的加成贊助，愛你喔！🥰`)
-                ];
-
-                const randomEmbed = boostEmbeds[Math.floor(Math.random() * boostEmbeds.length)]
-                    .setThumbnail(newMember.user.displayAvatarURL({ dynamic: true }))
-                    .setFooter({ text: 'ENDLESS 感謝您的支持與陪伴', iconURL: newMember.guild.iconURL() })
-                    .setTimestamp();
-
-                await boostChannel.send({ content: `🎊 **狂賀！伺服器收到了一份珍貴的禮物！** 🎊`, embeds: [randomEmbed] });
-            }
-
-            const tutorialEmbed = new EmbedBuilder()
-                .setColor('#FFD700')
-                .setTitle('🎶 【 Booster 專屬特權：巨星紅毯進場 BGM 設定指南 】 🎶')
-                .setDescription(`🎀 **叮咚！親愛的乾爹/乾媽您好！(抱大腿)**\n超級無敵感謝您用閃亮亮的 Server Boost 支持 ENDLESS 呀！🥰\n\n你知道嗎？身為尊貴的 Booster，Discord 有送您一個超神氣的隱藏特權喔！就是——**「專屬語音進場 BGM」**！✨\n\n只要設定好，以後您每次踩進公會的語音頻道，系統就會自動幫您播專屬的出場配樂！是不是超有排場、超像巨星登場！😎\n\n👇 **快跟著我的超簡單 3 步驟把專屬 BGM 裝起來吧：**\n\n**Step 1.** 點擊 Discord 左下角您的名字旁邊的 ⚙️ **「使用者設定 (小齒輪)」**。\n**Step 2.** 在左邊清單找到 🔊 **「語音和視訊」**。\n**Step 3.** 往下滾動找到 **「音效板 (Soundboard)」** 區塊，點一下 **「入用語音頻道音效」** 右邊的 ✏️ 鉛筆圖示，就可以挑選您最愛的音效啦！\n\n*(💡 悄悄話：您可以直接選我們 ENDLESS 伺服器自己專屬的可愛音效喔！趕快去挑一首，今晚來語音頻道讓我們驚豔一下吧！等您的華麗登場唷～～🚀)*`)
-                .setFooter({ text: 'ENDLESS 專屬貼心小秘書', iconURL: newMember.guild.iconURL() });
-
-            await newMember.send({ embeds: [tutorialEmbed] }).catch(() => {
-                console.log(`⚠️ 無法發送進場教學給 ${newMember.user.tag} (可能關閉了私訊)`);
-            });
-
-        } catch (err) { console.error('❌ 加成系統處理失敗：', err); }
+        const boostChannel = await client.channels.fetch(config.channels.boostThanks).catch(() => null);
+        await checkAndThankBooster(newMember, boostChannel);
     }
 });
 
@@ -249,20 +287,17 @@ client.on('messageCreate', async message => {
             const docRef = db.collection('boosterSettings').doc(message.author.id);
             const doc = await docRef.get();
 
-            // 新增 hasSeenHint 來判斷是不是第一次發動紅毯
             let data = doc.exists ? doc.data() : { optOut: false, lastRedCarpet: '', hasSeenHint: false };
 
             if (data.optOut || data.lastRedCarpet === todayStr) return;
 
             let randomMsg = boosterRedCarpetMessages[Math.floor(Math.random() * boosterRedCarpetMessages.length)](`<@${message.author.id}>`);
             
-            // 🌟 如果是史上第一次觸發，自動附加貼心關閉教學
             if (!data.hasSeenHint) {
                 randomMsg += `\n\n*(💡 貼心小提醒：這是 Booster 專屬的浮誇進場特權喔！如果您覺得太高調，隨時可以使用 \`/星光紅毯設定\` 指令關閉它！)*`;
             }
 
             await message.channel.send(randomMsg);
-
             await docRef.set({ lastRedCarpet: todayStr, hasSeenHint: true }, { merge: true });
 
         } catch (err) { console.error('❌ 星光紅毯觸發失敗：', err); }
@@ -293,8 +328,32 @@ client.on('interactionCreate', async interaction => {
                 return interaction.editReply('✨ 設定成功！已為您開啟浮誇紅毯模式！明天在綜合大廳發言時就會為您鋪上紅毯囉！🌹');
             }
 
-            if ((cmd === '解鎖權限' || cmd === '發布小指南' || cmd === '查詢目前公會成員' || cmd === '查詢目前親友團' || cmd === '同步更名' || cmd === '清除資料' || cmd === '清除訊息') && !isOwner && !hasAdminRole && !hasAdminPerm) {
+            if ((cmd === '解鎖權限' || cmd === '發布小指南' || cmd === '查詢目前公會成員' || cmd === '查詢目前親友團' || cmd === '同步更名' || cmd === '檢查補發感謝' || cmd === '清除資料' || cmd === '清除訊息') && !isOwner && !hasAdminRole && !hasAdminPerm) {
                 return interaction.reply({ content: '❌ 很抱歉，此指令僅限幹部使用。', ephemeral: true });
+            }
+
+            // 🌟 幹部手動執行檢查補發感謝
+            if (cmd === '檢查補發感謝') {
+                await interaction.deferReply({ ephemeral: true });
+                await interaction.editReply('⏳ 正在掃描伺服器加成者名單，請稍候...');
+                try {
+                    const boostChannel = await interaction.guild.channels.fetch(config.channels.boostThanks).catch(() => null);
+                    if (!boostChannel) return interaction.editReply('❌ 找不到感謝卡發布頻道！');
+
+                    let count = 0;
+                    const members = await interaction.guild.members.fetch();
+                    for (const [id, member] of members) {
+                        if (member.premiumSince) {
+                            const wasThanked = await checkAndThankBooster(member, boostChannel);
+                            if (wasThanked) count++;
+                            await new Promise(resolve => setTimeout(resolve, 300));
+                        }
+                    }
+                    return interaction.editReply(`✅ **掃描補發完畢！**\n✨ 本次總共為 **${count}** 位錯過的乾爹乾媽補發了精美感謝卡片！🎉`);
+                } catch (err) {
+                    console.error('❌ 補發感謝指令錯誤：', err);
+                    return interaction.editReply('❌ 執行掃描時發生錯誤。');
+                }
             }
 
             if (cmd === '解鎖權限') {
@@ -426,7 +485,6 @@ client.on('interactionCreate', async interaction => {
                 });
             }
 
-            // 🛡️ 審核通過
             if (interaction.customId.startsWith('approve_')) {
                 const parts = interaction.customId.split('_');
                 const targetUserId = parts[1];
@@ -718,7 +776,6 @@ client.on('interactionCreate', async interaction => {
                     try {
                         const welcomeChannelFriend = await client.channels.fetch(config.channels.welcomeFriend);
                         if (welcomeChannelFriend) {
-                            // 🌟 使用親友團 10 款專屬迎新訊息
                             const randomFriendMsg = welcomeFriendMessages[Math.floor(Math.random() * welcomeFriendMessages.length)](interaction.user.id);
                             await welcomeChannelFriend.send(randomFriendMsg);
                         }
