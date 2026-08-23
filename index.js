@@ -200,7 +200,7 @@ async function generateFriendLeaderboard() {
 }
 
 // ==========================================
-// 🌟 共用核心函式：發布高質感加成感謝卡片
+// 🌟 共用核心函式：發布高質感加成感謝卡片 (全新條列式少女排版)
 // ==========================================
 async function checkAndThankBooster(member, boostChannel, isTest = false, interaction = null) {
     if (!isTest && !member.premiumSince) return false;
@@ -216,37 +216,44 @@ async function checkAndThankBooster(member, boostChannel, isTest = false, intera
         // 隨機選出一張橫幅大圖
         const randomImage = boostBannerImages[Math.floor(Math.random() * boostBannerImages.length)];
         
-        // 10種文案 (只改變 Description 的內容)
+        // 10種文案 (融合了你的設計要求)
         const boostDescriptions = [
-            `**太感動啦！** 你的支持化作了滿天星光，點亮了整個 ENDLESS 伺服器！✨\n感謝 <@${member.id}> 成為我們最耀眼的 Server Booster！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`,
-            `滴答滴答！是誰送來了滿滿的愛？😍\n超級感謝 <@${member.id}> 的加成火力支援，你的心意是公會成長的最強動力！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`,
-            `轟隆隆！因為 <@${member.id}> 的專屬加成，我們的公會正全速向更棒的未來起飛啦！🛸\n謝謝你願意把這份珍貴的禮物留給我們！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`,
-            `每一座偉大的城堡，都需要最堅固的基石！🛡️\n向我們尊貴的守護者 <@${member.id}> 致敬，感謝你的加成贊助！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`,
-            `閃閃發光的粉紅徽章亮起！✨\n讓我們掌聲歡迎 <@${member.id}> 用行動支持 ENDLESS，這份心意我們一定會好好珍惜！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`,
-            `你的無私奉獻，就像守護 ENDLESS 的魔法護盾！🔮\n超級感謝 <@${member.id}> 的加成，讓我們的伺服器變得更加與眾不同！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`,
-            `快看！是誰幫公會酒館升級了高級沙發？🛋️\n讓我們敬 <@${member.id}> 一杯，謝謝老闆的熱情加成贊助！（乾杯🍻）\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`,
-            `滴！系統偵測到一枚閃閃發光的寶藏夥伴！🎁\n萬分感謝 <@${member.id}> 對伺服器的加成，你絕對是公會最珍貴的寶物！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`,
-            `砰！因為你的加成，伺服器的夜空綻放了最美的專屬煙火！🎇\n感謝 <@${member.id}>，ENDLESS 因為有你而更加精采！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`,
-            `你的支持就像冬天裡的一杯熱可可，暖暖地流進了我們心裡... ☕\n謝謝 <@${member.id}> 的加成贊助，愛你喔！🥰\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`
+            `**太感動啦！** 你的支持化作了滿天星光，點亮了整個 ENDLESS！✨`,
+            `**滴答滴答！** 是誰送來了滿滿的愛？超級感謝你的加成火力支援！😍`,
+            `**轟隆隆！** 因為你的專屬加成，公會正全速向更棒的未來起飛啦！🛸`,
+            `**致敬守護者！** 每一座偉大的城堡，都需要最堅固的基石，感謝贊助！🛡️`,
+            `**粉紅徽章亮起！** 讓我們掌聲歡迎 VIP，這份心意我們一定會好好珍惜！✨`,
+            `**奇蹟守護者！** 你的無私奉獻，讓我們的伺服器變得更加與眾不同！🔮`,
+            `**酒館金主降臨！** 謝謝老闆幫公會酒館升級高級沙發，讓我們敬你一杯！🍻`,
+            `**捕捉到寶藏！** 系統偵測到一枚閃閃發光的寶藏夥伴，你絕對是最珍貴的！🎁`,
+            `**煙火為你綻放！** 砰！因為你的加成，伺服器的夜空綻放了最美的煙火！🎇`,
+            `**溫暖的擁抱！** 你的支持就像冬天裡的一杯熱可可，暖暖地流進了我們心裡... ☕`
         ];
 
-        const randomDescription = boostDescriptions[Math.floor(Math.random() * boostDescriptions.length)];
+        const randomText = boostDescriptions[Math.floor(Math.random() * boostDescriptions.length)];
 
-        // 🌟 打造高質感 Embed
+        // 🌟 打造高質感 Embed (採用你的排版設計)
         const thankYouEmbed = new EmbedBuilder()
-            .setColor('#FFB6C1') // 溫暖粉橘色
+            .setColor('#FF99CC') // 溫暖粉紅色邊框
             .setAuthor({ 
-                name: member.displayName, // 顯示使用者的群組暱稱
-                iconURL: member.user.displayAvatarURL({ dynamic: true }) // 顯示使用者大頭貼
+                name: member.displayName, // 左上角顯示群組暱稱
+                iconURL: member.user.displayAvatarURL({ dynamic: true }) // 左上角大頭貼
             })
-            .setTitle('💖 THANK YOU FOR YOUR BOOST')
-            .setDescription(randomDescription)
-            .setThumbnail('https://cdn.discordapp.com/attachments/1539719568065560656/1540960580975886407/star_icon.png') // 你可以把這個換成你喜歡的裝飾小圖示
+            .setTitle('💖 THANK YOU FOR YOUR BOOST 💖')
+            .setDescription(
+                `🌞 🌞 🌞 🌞 🌞 🌞 🌞 🌞 🌞 🌞\n\n` +
+                `• 嘻嘻謝謝泥！<@${member.id}> 💕\n` +
+                `　↳ ${randomText}\n` + // 這裡套入隨機的 10 種感謝詞
+                `• 目前伺服器累計已有【 ✨ **${boostCount} 個加成** ✨ 】\n` +
+                `• 專屬特權與頻道已經解鎖囉！貼心小助手已經私訊發送出場音效設定給您，趕緊去看看吧 💌\n\n` +
+                `🌞 🌞 🌞 🌞 🌞 🌞 🌞 🌞 🌞 🌞`
+            )
+            .setThumbnail('https://cdn.discordapp.com/attachments/1539719568065560656/1540000479310913656/IMG_5475.jpg?ex=6a8ba876&is=6a8a56f6&hm=80fda34fd5bbc9ec0addca70c6ad862b19e868ceafc823601f36fc23694804a2&') // 右上角可愛裝飾圖
             .setImage(randomImage) // 隨機橫幅大圖
-            .setFooter({ text: `感謝 <@${member.user.tag}> 的貢獻與努力，祝你一切順利 🤍`, iconURL: member.guild.iconURL() })
+            .setFooter({ text: `感謝的貢獻與努力，祝你一切順利 🤍 | 今天`, iconURL: member.guild.iconURL() })
             .setTimestamp();
 
-        // 獨立於 Embed 之外的 ping 訊息 (Message Content)
+        // 獨立於 Embed 之外的 ping 訊息
         const pingContent = `🎊 **[加成圖示] <@${member.id}> 觸發了伺服器感謝加成 💕** 🎊`;
         const testContent = `🎊 **[私密測試預覽] <@${member.id}> 觸發了伺服器感謝加成 💕** 🎊`;
 
