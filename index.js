@@ -51,7 +51,7 @@ const config = {
         welcomeFriend: '1539904561941188608',
         boostThanks: '1540726577443115109', // 🌟 Server Boost 感謝卡推播頻道
         chatLounge: '1539904561941188608',   // 🌟 星光紅毯鋪設頻道
-        leaderboardChannel: '這裡填入你想要發布排行榜的頻道ID' // 🌟 新增：每月自動發布排行榜的頻道
+        leaderboardChannel: '這裡填入你想要發布排行榜的頻道ID' 
     },
     roles: {
         adminRoles: ADMIN_ROLES, 
@@ -202,21 +202,23 @@ async function generateFriendLeaderboard() {
 // ==========================================
 // 🌟 共用核心函式：發布高質感加成感謝卡片
 // ==========================================
-async function checkAndThankBooster(member, boostChannel, isTest = false, interaction = null) {
-    if (!isTest && !member.premiumSince) return false;
+async function checkAndThankBooster(member, boostChannel, mode = 'normal', interaction = null) {
+    // mode 說明: 'normal' = 正常自動檢查, 'test' = 私密測試預覽, 'replay' = 強制重新廣播
+    
+    // 如果是正常自動檢查且沒有 premiumSince，就不處理
+    if (mode === 'normal' && !member.premiumSince) return false;
 
     const docRef = db.collection('boostedUsers').doc(member.id);
     const doc = await docRef.get();
 
-    if (!isTest && doc.exists) return false;
+    // 只有在 'normal' 模式下，才去檢查資料庫防重複。'test' 或 'replay' 都直接放行
+    if (mode === 'normal' && doc.exists) return false;
 
     try {
         const boostCount = member.guild.premiumSubscriptionCount || 0;
         
-        // 隨機選出一張橫幅大圖
         const randomImage = boostBannerImages[Math.floor(Math.random() * boostBannerImages.length)];
         
-        // 10種文案 (拆分成標題與專屬台詞)
         const boostVariations = [
             { title: '🌸 星光閃耀！感謝加成 🌸', text: '**太感動啦！** 你的支持化作了滿天星光，點亮了整個 ENDLESS！✨' },
             { title: '💖 愛心爆擊！伺服器升級 💖', text: '**滴答滴答！** 是誰送來了滿滿的愛？超級感謝你的加成火力支援！😍' },
@@ -232,32 +234,50 @@ async function checkAndThankBooster(member, boostChannel, isTest = false, intera
 
         const randomChoice = boostVariations[Math.floor(Math.random() * boostVariations.length)];
 
-        // 🌟 打造高質感 Embed
         const thankYouEmbed = new EmbedBuilder()
-            .setColor('#FF99CC') // 溫暖粉紅色邊框
-            .setTitle(randomChoice.title) // 🌟 套用隨機大標題
+            .setColor('#FF99CC') 
+            .setTitle(randomChoice.title) 
             .setDescription(
                 `💖 **Thank you for Ur boost** 💖\n\n` +
                 `${randomChoice.text}\n\n` + 
-                `• 目前伺服器累計已有\n ✨ **${boostCount} 個加成** ✨ \n\n` +
-                `• 已解鎖屬於您的出場BGM以及盛大歡迎！\n 貼心小助手已經私訊出場音效設定給您，趕緊去看看吧 💌`
+                `• 目前伺服器累計已有 ✨ **${boostCount} 個加成** ✨ \n` +
+                `• 已解鎖屬於您的出場BGM以及盛大歡迎！貼心小助手已經私訊出場音效設定給您，趕緊去看看吧 💌`
             )
-            .setThumbnail(member.user.displayAvatarURL({ dynamic: true })) // 🌟 右上角顯示大頭照
-            .setImage(randomImage) // 隨機橫幅大圖
-            .setFooter({ text: `ENDLESS 感謝您的支持與陪伴，祝您一切順利 🤍`, iconURL: member.guild.iconURL() }) // 🌟 更新：全新的頁尾文字
+            .setThumbnail(member.user.displayAvatarURL({ dynamic: true })) 
+            .setImage(randomImage) 
+            .setFooter({ text: `ENDLESS 感謝您的支持與陪伴，祝您一切順利 🤍`, iconURL: member.guild.iconURL() }) 
             .setTimestamp();
 
-        // 獨立於 Embed 之外的 ping 訊息
-        const pingContent = `🎊 **<@${member.id}> 觸發了伺服器感謝加成 💕** 🎊`;
-        const testContent = `🎊 **[私密測試預覽] <@${member.id}> 觸發了伺服器感謝加成 💕** 🎊`;
-
-        if (isTest && interaction) {
-            await interaction.editReply({ content: testContent, embeds: [thankYouEmbed] });
-        } else if (boostChannel) {
-            await boostChannel.send({ content: pingContent, embeds: [thankYouEmbed] });
+        let pingContent = `🎊 **<@${member.id}> 觸發了伺服器感謝加成 💕** 🎊`;
+        if (mode === 'test') {
+            pingContent = `🎊 **[私密測試預覽] <@${member.id}> 觸發了伺服器感謝加成 💕** 🎊`;
+        } else if (mode === 'replay') {
+            // 讓重播的文字看起來自然一點，可以加上 [經典重現] 等小提示，如果不需要也可以保持原樣
+            pingContent = `🎊 **[經典回顧] 再次感謝 <@${member.id}> 對伺服器的偉大加成 💕** 🎊`;
         }
 
-        if (!isTest) {
+        let sentMessage = null;
+
+        // 如果是測試模式，私密回傳給幹部
+        if (mode === 'test' && interaction) {
+            sentMessage = await interaction.editReply({ content: pingContent, embeds: [thankYouEmbed], fetchReply: true });
+        } else if (boostChannel) {
+            // 正常或重播模式，公開發佈到感謝頻道
+            sentMessage = await boostChannel.send({ content: pingContent, embeds: [thankYouEmbed] });
+            
+            // 🌟 灑花機制：當機器人在公開頻道發出卡片時，自動加上反應特效
+            if (sentMessage) {
+                try {
+                    await sentMessage.react('🎉');
+                    await sentMessage.react('🎊');
+                    await sentMessage.react('💖');
+                    await sentMessage.react('✨');
+                } catch (reactErr) { console.error('無法加入灑花反應：', reactErr); }
+            }
+        }
+
+        // 只有正常模式 (首次感謝) 才需要發送私訊和寫入資料庫
+        if (mode === 'normal') {
             const tutorialEmbed = new EmbedBuilder()
                 .setColor('#FFD700')
                 .setTitle('🎶 【 Booster 專屬特權：巨星紅毯進場 BGM 設定指南 】 🎶')
@@ -302,6 +322,13 @@ client.once('clientReady', async () => {
         { name: '同步更名', description: '批次同步資料庫中所有成員的最新暱稱格式與符號 (僅限幹部)', default_member_permissions: adminPerms },
         { name: '檢查補發感謝', description: '【幹部專屬】掃描伺服器所有加成者，自動為錯過的乾爹乾媽補發感謝卡！', default_member_permissions: adminPerms },
         { name: '測試感謝卡', description: '【幹部專屬】發送一張私密測試用的加成感謝卡 (僅自己可見)', default_member_permissions: adminPerms },
+        // 🌟 新增：重播感謝卡指令，允許幹部選擇特定使用者
+        { 
+            name: '重播感謝卡', 
+            description: '【幹部專屬】強制公開重播指定玩家的加成感謝卡 (不管以前有沒有發過)', 
+            default_member_permissions: adminPerms,
+            options: [{ name: '玩家', description: '請選擇您要重新感謝的加成者', type: ApplicationCommandOptionType.User, required: true }]
+        },
         { 
             name: '清除資料', description: '清除指定成員的資料庫紀錄與身分組 (僅限幹部)', default_member_permissions: adminPerms,
             options: [{ name: '目標', description: '請選擇要重置資料的成員', type: ApplicationCommandOptionType.User, required: true }]
@@ -335,11 +362,12 @@ client.once('clientReady', async () => {
                 const members = await guild.members.fetch();
                 for (const [id, member] of members) {
                     if (member.premiumSince) {
-                        await checkAndThankBooster(member, boostChannel, false);
+                        // 'normal' 模式會自動檢查資料庫
+                        await checkAndThankBooster(member, boostChannel, 'normal');
                         await new Promise(resolve => setTimeout(resolve, 300));
                     }
                 }
-                console.log('✅ 啟 मध्या加成狀態掃描完成！');
+                console.log('✅ 啟動加成狀態掃描完成！');
             }
         }
     } catch (err) { console.error('❌ 啟動掃描加成者失敗：', err); }
@@ -384,7 +412,7 @@ function scheduleMonthlyLeaderboard() {
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
     if (!oldMember.premiumSince && newMember.premiumSince) {
         const boostChannel = await client.channels.fetch(config.channels.boostThanks).catch(() => null);
-        await checkAndThankBooster(newMember, boostChannel, false);
+        await checkAndThankBooster(newMember, boostChannel, 'normal');
     }
 });
 
@@ -448,7 +476,7 @@ client.on('interactionCreate', async interaction => {
                 return interaction.editReply('✨ 設定成功！已為您開啟浮誇紅毯模式！明天在綜合大廳發言時就會為您鋪上紅毯囉！🌹');
             }
 
-            if ((cmd === '解鎖權限' || cmd === '發布小指南' || cmd === '查詢目前公會成員' || cmd === '查詢目前親友團' || cmd === '同步更名' || cmd === '檢查補發感謝' || cmd === '測試感謝卡' || cmd === '清除資料' || cmd === '清除訊息') && !isOwner && !hasAdminRole && !hasAdminPerm) {
+            if ((cmd === '解鎖權限' || cmd === '發布小指南' || cmd === '查詢目前公會成員' || cmd === '查詢目前親友團' || cmd === '同步更名' || cmd === '檢查補發感謝' || cmd === '測試感謝卡' || cmd === '重播感謝卡' || cmd === '清除資料' || cmd === '清除訊息') && !isOwner && !hasAdminRole && !hasAdminPerm) {
                 return interaction.reply({ content: '❌ 很抱歉，此指令僅限幹部使用。', ephemeral: true });
             }
 
@@ -456,8 +484,36 @@ client.on('interactionCreate', async interaction => {
             if (cmd === '測試感謝卡') {
                 await interaction.deferReply({ ephemeral: true });
                 const boostChannel = await interaction.guild.channels.fetch(config.channels.boostThanks).catch(() => null);
-                await checkAndThankBooster(interaction.member, boostChannel, true, interaction);
+                await checkAndThankBooster(interaction.member, boostChannel, 'test', interaction);
                 return;
+            }
+
+            // 🌟 重播感謝卡 (幹部強制重新廣播特定玩家)
+            if (cmd === '重播感謝卡') {
+                await interaction.deferReply({ ephemeral: true }); // 先讓幹部收到私密等待回覆
+                const targetUser = interaction.options.getUser('玩家');
+                const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+
+                if (!targetMember) {
+                    return interaction.editReply('❌ 找不到該成員，他可能已經離開伺服器了。');
+                }
+                if (!targetMember.premiumSince) {
+                    return interaction.editReply(`❌ <@${targetUser.id}> 目前**不是**伺服器加成者喔！無法發送感謝卡。`);
+                }
+
+                const boostChannel = await interaction.guild.channels.fetch(config.channels.boostThanks).catch(() => null);
+                if (!boostChannel) {
+                    return interaction.editReply('❌ 找不到感謝卡發佈頻道，請檢查設定。');
+                }
+
+                // 強制使用 'replay' 模式，這會跳過資料庫的「是否已感謝過」檢查，直接在頻道公開灑花！
+                const success = await checkAndThankBooster(targetMember, boostChannel, 'replay', interaction);
+
+                if (success) {
+                    return interaction.editReply(`✅ **大成功！** 已經在 <#${config.channels.boostThanks}> 重新為 <@${targetUser.id}> 舉辦盛大的感謝典禮囉！🎉`);
+                } else {
+                    return interaction.editReply('❌ 重播失敗，發生了未知的錯誤。');
+                }
             }
 
             if (cmd === '檢查補發感謝') {
@@ -471,7 +527,7 @@ client.on('interactionCreate', async interaction => {
                     const members = await interaction.guild.members.fetch();
                     for (const [id, member] of members) {
                         if (member.premiumSince) {
-                            const wasThanked = await checkAndThankBooster(member, boostChannel, false);
+                            const wasThanked = await checkAndThankBooster(member, boostChannel, 'normal');
                             if (wasThanked) count++;
                             await new Promise(resolve => setTimeout(resolve, 300));
                         }
