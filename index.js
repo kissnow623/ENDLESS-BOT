@@ -51,7 +51,7 @@ const config = {
         welcomeFriend: '1539904561941188608',
         boostThanks: '1540726577443115109', // 🌟 Server Boost 感謝卡推播頻道
         chatLounge: '1539904561941188608',   // 🌟 星光紅毯鋪設頻道
-        leaderboardChannel: '這裡填入你想要發布排行榜的頻道ID' // 🌟 新增：每月自動發布排行榜的頻道
+        leaderboardChannel: '這裡填入你想要發布排行榜的頻道ID' // 🌟 每月自動發布排行榜的頻道 ID
     },
     roles: {
         adminRoles: ADMIN_ROLES, 
@@ -133,45 +133,103 @@ const boosterRedCarpetMessages = [
     (user) => `🎊 撒花！${user} 榮耀登入，今天的頻道絕對精彩！`
 ];
 
-// 🌟 共用核心函式：發布多元化加成感謝卡片 (包含累計加成數與圖片)
-async function checkAndThankBooster(member, boostChannel, isTest = false) {
+async function updateNickname(member, gameName, roleType, classesArray) {
+    const icon = roleType === '公會成員' ? '🌟' : '🍁';
+    const classesStr = classesArray.join('｜');
+    let newNick = `${gameName} ${icon} ${classesStr}`; 
+    if (newNick.length > 32) newNick = newNick.substring(0, 32); 
+    try { await member.setNickname(newNick); } catch (e) { console.log(`⚠️ 無法修改 ${member.user.tag} 的暱稱`); }
+    return newNick;
+}
+
+// ==========================================
+// 🌟 核心函式：公會成員排行榜格式化
+// ==========================================
+async function generateMemberLeaderboard() {
+    try {
+        const snapshot = await db.collection('members').where('role', '==', '公會成員').get();
+        if (snapshot.empty) return '目前資料庫中沒有公會成員紀錄。';
+        
+        let members = [];
+        snapshot.forEach(doc => members.push(doc.data()));
+        members.sort((a, b) => parseInt(b.gameLevel) - parseInt(a.gameLevel));
+        
+        let description = `目前公會總人數：**${members.length}** 人\n\n**【 成員等級排行榜 】**\n`;
+        members.forEach((m, index) => { 
+            const classes = m.gameClasses ? m.gameClasses.join('｜') : m.gameClass;
+            description += `${index + 1}.**(LV.${m.gameLevel})-** ${m.gameName} 🌟 ${classes}\n`; 
+        });
+        return new EmbedBuilder().setTitle('🛡️ ENDLESS 公會成員名冊').setDescription(description.substring(0, 4000)).setColor('#FFD700');
+    } catch (error) {
+        console.error('❌ 產生公會成員排行榜失敗：', error);
+        return null;
+    }
+}
+
+// ==========================================
+// 🌟 核心函式：親友團排行榜格式化 (按進來先後順序，不顯示等級)
+// ==========================================
+async function generateFriendLeaderboard() {
+    try {
+        const snapshot = await db.collection('members').where('role', '==', '親友團').get();
+        if (snapshot.empty) return '目前資料庫中沒有親友團紀錄。';
+        
+        let members = [];
+        snapshot.forEach(doc => members.push(doc.data()));
+        members.sort((a, b) => (a.joinDate?.toDate() || 0) - (b.joinDate?.toDate() || 0));
+        
+        let description = `目前親友團總人數：**${members.length}** 人\n\n**【 🌙 親友團名單 】**\n`;
+        members.forEach((m, index) => { 
+            const classes = m.gameClasses ? m.gameClasses.join('｜') : m.gameClass;
+            description += `${index + 1}.- ${m.gameName} 🍁 ${classes}\n`; 
+        });
+        return new EmbedBuilder().setTitle('🌙 ENDLESS 親友團名冊').setDescription(description.substring(0, 4000)).setColor('#FF99CC');
+    } catch (error) {
+         console.error('❌ 產生親友團排行榜失敗：', error);
+         return null;
+    }
+}
+
+// ==========================================
+// 🌟 共用核心函式：發布多元化加成感謝卡片
+// ==========================================
+async function checkAndThankBooster(member, boostChannel, isTest = false, interaction = null) {
     if (!isTest && !member.premiumSince) return false;
 
     const docRef = db.collection('boostedUsers').doc(member.id);
     const doc = await docRef.get();
 
-    // 如果不是測試，且資料庫已經感謝過了就跳過
     if (!isTest && doc.exists) return false;
 
     try {
-        if (boostChannel) {
-            // 抓取伺服器目前累計總加成數
-            const boostCount = member.guild.premiumSubscriptionCount || 0;
+        const boostCount = member.guild.premiumSubscriptionCount || 0;
 
-            const boostEmbeds = [
-                new EmbedBuilder().setColor('#FF73FA').setTitle('🌸 【星光閃耀！感謝加成】').setDescription(`**太感動啦！** 你的支持化作了滿天星光，點亮了整個 ENDLESS 伺服器！✨\n感謝 <@${member.id}> 成為我們最耀眼的 Server Booster！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
-                new EmbedBuilder().setColor('#FF73FA').setTitle('💖 【愛心爆擊！伺服器升級】').setDescription(`滴答滴答！是誰送來了滿滿的愛？😍\n超級感謝 <@${member.id}> 的加成火力支援，你的心意是公會成長的最強動力！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
-                new EmbedBuilder().setColor('#FF73FA').setTitle('🚀 【動力引擎啟動！】').setDescription(`轟隆隆！因為 <@${member.id}> 的專屬加成，我們的公會正全速向更棒的未來起飛啦！🛸\n謝謝你願意把這份珍貴的禮物留給我們！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
-                new EmbedBuilder().setColor('#FF73FA').setTitle('🏰 【ENDLESS 的堅固基石】').setDescription(`每一座偉大的城堡，都需要最堅固的基石！🛡️\n向我們尊貴的守護者 <@${member.id}> 致敬，感謝你的加成贊助！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
-                new EmbedBuilder().setColor('#FF73FA').setTitle('💎 【尊榮 VIP 降臨】').setDescription(`閃閃發光的粉紅徽章亮起！✨\n讓我們掌聲歡迎 <@${member.id}> 用行動支持 ENDLESS，這份心意我們一定會好好珍惜！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
-                new EmbedBuilder().setColor('#FF73FA').setTitle('🌟 【奇蹟守護者】').setDescription(`你的無私奉獻，就像守護 ENDLESS 的魔法護盾！🔮\n超級感謝 <@${member.id}> 的加成，讓我們的伺服器變得更加與眾不同！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
-                new EmbedBuilder().setColor('#FF73FA').setTitle('🍷 【酒館的最強金主】').setDescription(`快看！是誰幫公會酒館升級了高級沙發？🛋️\n讓我們敬 <@${member.id}> 一杯，謝謝老闆的熱情加成贊助！（乾杯🍻）\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
-                new EmbedBuilder().setColor('#FF73FA').setTitle('👑 【無可取代的寶藏】').setDescription(`滴！系統偵測到一枚閃閃發光的寶藏夥伴！🎁\n萬分感謝 <@${member.id}> 對伺服器的加成，你絕對是公會最珍貴的寶物！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
-                new EmbedBuilder().setColor('#FF73FA').setTitle('🎆 【煙火為你綻放】').setDescription(`砰！因為你的加成，伺服器的夜空綻放了最美的專屬煙火！🎇\n感謝 <@${member.id}>，ENDLESS 因為有你而更加精采！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
-                new EmbedBuilder().setColor('#FF73FA').setTitle('🎀 【溫暖的擁抱】').setDescription(`你的支持就像冬天裡的一杯熱可可，暖暖地流進了我們心裡... ☕\n謝謝 <@${member.id}> 的加成贊助，愛你喔！🥰\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`)
-            ];
+        const boostEmbeds = [
+            new EmbedBuilder().setColor('#FF73FA').setTitle('🌸 【星光閃耀！感謝加成】').setDescription(`**太感動啦！** 你的支持化作了滿天星光，點亮了整個 ENDLESS 伺服器！✨\n感謝 <@${member.id}> 成為我們最耀眼的 Server Booster！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
+            new EmbedBuilder().setColor('#FF73FA').setTitle('💖 【愛心爆擊！伺服器升級】').setDescription(`滴答滴答！是誰送來了滿滿的愛？😍\n超級感謝 <@${member.id}> 的加成火力支援，你的心意是公會成長的最強動力！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
+            new EmbedBuilder().setColor('#FF73FA').setTitle('🚀 【動力引擎啟動！】').setDescription(`轟隆隆！因為 <@${member.id}> 的專屬加成，我們的公會正全速向更棒的未來起飛啦！🛸\n謝謝你願意把這份珍貴的禮物留給我們！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
+            new EmbedBuilder().setColor('#FF73FA').setTitle('🏰 【ENDLESS 的堅固基石】').setDescription(`每一座偉大的城堡，都需要最堅固的基石！🛡️\n向我們尊貴的守護者 <@${member.id}> 致敬，感謝你的加成贊助！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
+            new EmbedBuilder().setColor('#FF73FA').setTitle('💎 【尊榮 VIP 降臨】').setDescription(`閃閃發光的粉紅徽章亮起！✨\n讓我們掌聲歡迎 <@${member.id}> 用行動支持 ENDLESS，這份心意我們一定會好好珍惜！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
+            new EmbedBuilder().setColor('#FF73FA').setTitle('🌟 【奇蹟守護者】').setDescription(`你的無私奉獻，就像守護 ENDLESS 的魔法護盾！🔮\n超級感謝 <@${member.id}> 的加成，讓我們的伺服器變得更加與眾不同！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
+            new EmbedBuilder().setColor('#FF73FA').setTitle('🍷 【酒館的最強金主】').setDescription(`快看！是誰幫公會酒館升級了高級沙發？🛋️\n讓我們敬 <@${member.id}> 一杯，謝謝老闆的熱情加成贊助！（乾杯🍻）\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
+            new EmbedBuilder().setColor('#FF73FA').setTitle('👑 【無可取代的寶藏】').setDescription(`滴！系統偵測到一枚閃閃發光的寶藏夥伴！🎁\n萬分感謝 <@${member.id}> 對伺服器的加成，你絕對是公會最珍貴的寶物！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
+            new EmbedBuilder().setColor('#FF73FA').setTitle('🎆 【煙火為你綻放】').setDescription(`砰！因為你的加成，伺服器的夜空綻放了最美的專屬煙火！🎇\n感謝 <@${member.id}>，ENDLESS 因為有你而更加精采！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
+            new EmbedBuilder().setColor('#FF73FA').setTitle('🎀 【溫暖的擁抱】').setDescription(`你的支持就像冬天裡的一杯熱可可，暖暖地流進了我們心裡... ☕\n謝謝 <@${member.id}> 的加成贊助，愛你喔！🥰\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`)
+        ];
 
-            const randomEmbed = boostEmbeds[Math.floor(Math.random() * boostEmbeds.length)]
-                .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-                // 🖼️ 圖片設定：把下面這行的網址換成你的精美圖片連結，或是刪除這行不要圖片
-                .setImage('https://meee.com.tw/l0AoDDS') 
-                .setFooter({ text: 'ENDLESS 感謝您的支持與陪伴', iconURL: member.guild.iconURL() })
-                .setTimestamp();
+        const randomEmbed = boostEmbeds[Math.floor(Math.random() * boostEmbeds.length)]
+            .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
+            // 🖼️ 圖片設定：使用穩定支援的圖片網址
+            .setImage('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe') 
+            .setFooter({ text: 'ENDLESS 感謝您的支持與陪伴', iconURL: member.guild.iconURL() })
+            .setTimestamp();
 
+        if (isTest && interaction) {
+            await interaction.editReply({ content: `🎊 **[私密測試預覽] 伺服器收到了一份珍貴的禮物！** 🎊`, embeds: [randomEmbed] });
+        } else if (boostChannel) {
             await boostChannel.send({ content: `🎊 **狂賀！伺服器收到了一份珍貴的禮物！** 🎊`, embeds: [randomEmbed] });
         }
 
-        // 如果是正式觸發才發私訊與寫入資料庫
         if (!isTest) {
             const tutorialEmbed = new EmbedBuilder()
                 .setColor('#FFD700')
@@ -186,59 +244,6 @@ async function checkAndThankBooster(member, boostChannel, isTest = false) {
     } catch (err) {
         console.error('❌ 處理加成感謝失敗：', err);
         return false;
-    }
-}
-
-async function updateNickname(member, gameName, roleType, classesArray) {
-    const icon = roleType === '公會成員' ? '🌟' : '🍁';
-    const classesStr = classesArray.join('｜');
-    let newNick = `${gameName} ${icon} ${classesStr}`; 
-    if (newNick.length > 32) newNick = newNick.substring(0, 32); 
-    try { await member.setNickname(newNick); } catch (e) { console.log(`⚠️ 無法修改 ${member.user.tag} 的暱稱`); }
-    return newNick;
-}
-
-// 🌟 共用核心函式：產生公會成員排行榜
-async function generateMemberLeaderboard() {
-    try {
-        const snapshot = await db.collection('members').where('role', '==', '公會成員').get();
-        if (snapshot.empty) return '目前資料庫中沒有公會成員紀錄。';
-        
-        let members = [];
-        snapshot.forEach(doc => members.push(doc.data()));
-        members.sort((a, b) => parseInt(b.gameLevel) - parseInt(a.gameLevel));
-        
-        let description = `目前公會總人數：**${members.length}** 人\n\n**【 成員等級排行榜 】**\n`;
-        members.forEach((m, index) => { 
-            const classes = m.gameClasses ? m.gameClasses.join('｜') : m.gameClass;
-            description += `${index + 1}. **(LV.${m.gameLevel}) -** ${m.gameName} 🌟 ${classes}\n`; 
-        });
-        return new EmbedBuilder().setTitle('🛡️ ENDLESS 公會成員名冊').setDescription(description.substring(0, 4000)).setColor('#FFD700');
-    } catch (error) {
-        console.error('❌ 產生公會成員排行榜失敗：', error);
-        return null;
-    }
-}
-
-// 🌟 共用核心函式：產生親友團排行榜
-async function generateFriendLeaderboard() {
-    try {
-        const snapshot = await db.collection('members').where('role', '==', '親友團').get();
-        if (snapshot.empty) return '目前資料庫中沒有親友團紀錄。';
-        
-        let members = [];
-        snapshot.forEach(doc => members.push(doc.data()));
-        members.sort((a, b) => (a.joinDate?.toDate() || 0) - (b.joinDate?.toDate() || 0));
-        
-        let description = `目前親友團總人數：**${members.length}** 人\n\n**【 🌙 親友團名單 】**\n`;
-        members.forEach((m, index) => { 
-            const classes = m.gameClasses ? m.gameClasses.join('｜') : m.gameClass;
-            description += `${index + 1}. **-** ${m.gameName} 🍁 ${classes}\n`; 
-        });
-        return new EmbedBuilder().setTitle('🌙 ENDLESS 親友團名冊').setDescription(description.substring(0, 4000)).setColor('#FF99CC');
-    } catch (error) {
-         console.error('❌ 產生親友團排行榜失敗：', error);
-         return null;
     }
 }
 
@@ -269,7 +274,7 @@ client.once('clientReady', async () => {
         { name: '查詢目前親友團', description: '查詢親友團成員列表與總人數 (僅限幹部)', default_member_permissions: adminPerms },
         { name: '同步更名', description: '批次同步資料庫中所有成員的最新暱稱格式與符號 (僅限幹部)', default_member_permissions: adminPerms },
         { name: '檢查補發感謝', description: '【幹部專屬】掃描伺服器所有加成者，自動為錯過的乾爹乾媽補發感謝卡！', default_member_permissions: adminPerms },
-        { name: '測試感謝卡', description: '【幹部專屬】發送一張測試用的精美加成感謝卡到指定頻道', default_member_permissions: adminPerms },
+        { name: '測試感謝卡', description: '【幹部專屬】發送一張私密測試用的加成感謝卡 (僅自己可見)', default_member_permissions: adminPerms },
         { 
             name: '清除資料', description: '清除指定成員的資料庫紀錄與身分組 (僅限幹部)', default_member_permissions: adminPerms,
             options: [{ name: '目標', description: '請選擇要重置資料的成員', type: ApplicationCommandOptionType.User, required: true }]
@@ -312,7 +317,7 @@ client.once('clientReady', async () => {
         }
     } catch (err) { console.error('❌ 啟動掃描加成者失敗：', err); }
     
-    // 啟動每個月初自動發布排行榜的排程
+    // 啟動每個月初自動發布排行榜
     scheduleMonthlyLeaderboard();
 });
 
@@ -321,50 +326,29 @@ client.once('clientReady', async () => {
 // ==========================================
 function scheduleMonthlyLeaderboard() {
     const now = new Date();
-    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0); // 下個月 1 號的 00:00:00
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0); 
     const timeUntilNextMonth = nextMonth.getTime() - now.getTime();
-
-    console.log(`⏳ 排行榜將於 ${Math.floor(timeUntilNextMonth / (1000 * 60 * 60 * 24))} 天後自動發佈。`);
 
     setTimeout(async () => {
         try {
-            console.log('📈 開始執行每月排行榜自動發佈...');
             const guild = client.guilds.cache.get(config.guildId);
             if (!guild) return;
 
             const channelId = config.channels.leaderboardChannel;
-            if (!channelId || channelId === '這裡填入你想要發布排行榜的頻道ID') {
-                console.log('⚠️ 未設定 leaderboardChannel，跳過自動發佈。');
-                return;
-            }
+            if (!channelId || channelId === '這裡填入你想要發布排行榜的頻道ID') return;
 
             const targetChannel = await client.channels.fetch(channelId).catch(() => null);
-            if (!targetChannel) {
-                console.log('⚠️ 找不到指定的排行榜發佈頻道。');
-                return;
-            }
+            if (!targetChannel) return;
 
             const memberEmbed = await generateMemberLeaderboard();
             const friendEmbed = await generateFriendLeaderboard();
 
-            if (memberEmbed && typeof memberEmbed !== 'string') {
-                await targetChannel.send({ embeds: [memberEmbed] });
-            } else if (typeof memberEmbed === 'string') {
-                await targetChannel.send(memberEmbed);
-            }
-
-            if (friendEmbed && typeof friendEmbed !== 'string') {
-                await targetChannel.send({ embeds: [friendEmbed] });
-            } else if (typeof friendEmbed === 'string') {
-                await targetChannel.send(friendEmbed);
-            }
-            
-            console.log('✅ 每月排行榜發佈成功！');
+            if (memberEmbed && typeof memberEmbed !== 'string') await targetChannel.send({ embeds: [memberEmbed] });
+            if (friendEmbed && typeof friendEmbed !== 'string') await targetChannel.send({ embeds: [friendEmbed] });
 
         } catch (error) {
             console.error('❌ 自動發佈排行榜時發生錯誤：', error);
         } finally {
-            // 發佈完畢後，再次排程下一個月
             scheduleMonthlyLeaderboard();
         }
     }, timeUntilNextMonth);
@@ -428,15 +412,12 @@ client.on('interactionCreate', async interaction => {
                 return interaction.reply({ content: '❌ 很抱歉，此指令僅限幹部使用。', ephemeral: true });
             }
 
-            // 🌟 幹部執行「測試感謝卡」
+            // 🌟 測試感謝卡 (僅自己可見的私密預覽)
             if (cmd === '測試感謝卡') {
                 await interaction.deferReply({ ephemeral: true });
                 const boostChannel = await interaction.guild.channels.fetch(config.channels.boostThanks).catch(() => null);
-                if (!boostChannel) return interaction.editReply('❌ 找不到感謝卡發布頻道！');
-
-                // 使用執行指令的幹部自己作為測試對象
-                await checkAndThankBooster(interaction.member, boostChannel, true);
-                return interaction.editReply(`✅ 測試感謝卡已成功發送到 <#${config.channels.boostThanks}>！`);
+                await checkAndThankBooster(interaction.member, boostChannel, true, interaction);
+                return;
             }
 
             if (cmd === '檢查補發感謝') {
