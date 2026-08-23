@@ -51,7 +51,7 @@ const config = {
         welcomeFriend: '1539904561941188608',
         boostThanks: '1540726577443115109', // 🌟 Server Boost 感謝卡推播頻道
         chatLounge: '1539904561941188608',   // 🌟 星光紅毯鋪設頻道
-        leaderboardChannel: '這裡填入你想要發布排行榜的頻道ID' // 🌟 每月自動發布排行榜的頻道 ID
+        leaderboardChannel: '這裡填入你想要發布排行榜的頻道ID' // 🌟 新增：每月自動發布排行榜的頻道
     },
     roles: {
         adminRoles: ADMIN_ROLES, 
@@ -133,6 +133,15 @@ const boosterRedCarpetMessages = [
     (user) => `🎊 撒花！${user} 榮耀登入，今天的頻道絕對精彩！`
 ];
 
+// 🌟 感謝卡專用五張圖片 (隨機輪播)
+const boostBannerImages = [
+    'https://cdn.discordapp.com/attachments/1539719568065560656/1540947667784564867/file_000000001e3482068ff550c4da330d58.png?ex=6a8bced9&is=6a8a7d59&hm=04da4b20777bf733ee124c1c56ece83736516f213a1ad947e7a6894cbab4f7fe&',
+    'https://cdn.discordapp.com/attachments/1539719568065560656/1540947668430495754/file_000000002f708206a62ff6600b3bbc41.png?ex=6a8bced9&is=6a8a7d59&hm=4051d76562215866856e85981c406c59fd045b9a55e8affcad326e530288adc0&',
+    'https://cdn.discordapp.com/attachments/1539719568065560656/1540956754345459744/file_00000000553882069dd3021f5990a4b4.png?ex=6a8bd74f&is=6a8a85cf&hm=3ae158e282a42359ed672d6990373b5f9d7a1930b765679089176eb55ab7a6d8&',
+    'https://cdn.discordapp.com/attachments/1539719568065560656/1540956754752577647/file_00000000e81482099c4a51450c9ae8f5.png?ex=6a8bd74f&is=6a8a85cf&hm=f6491e5e1d3e7d26e9d8b22fc12d336eb6819d0c13aefa05415b0adbb39be41a&',
+    'https://cdn.discordapp.com/attachments/1539719568065560656/1540956755255754832/file_000000009fa0822fa44fa1ac84280623.png?ex=6a8bd750&is=6a8a85d0&hm=40fc1a910df5e646e106825e56e6ff14235ee21c6b3783c0331f20cd9e4a0a32&'
+];
+
 async function updateNickname(member, gameName, roleType, classesArray) {
     const icon = roleType === '公會成員' ? '🌟' : '🍁';
     const classesStr = classesArray.join('｜');
@@ -191,7 +200,7 @@ async function generateFriendLeaderboard() {
 }
 
 // ==========================================
-// 🌟 共用核心函式：發布多元化加成感謝卡片
+// 🌟 共用核心函式：發布高質感加成感謝卡片
 // ==========================================
 async function checkAndThankBooster(member, boostChannel, isTest = false, interaction = null) {
     if (!isTest && !member.premiumSince) return false;
@@ -203,31 +212,48 @@ async function checkAndThankBooster(member, boostChannel, isTest = false, intera
 
     try {
         const boostCount = member.guild.premiumSubscriptionCount || 0;
-
-        const boostEmbeds = [
-            new EmbedBuilder().setColor('#FF73FA').setTitle('🌸 【星光閃耀！感謝加成】').setDescription(`**太感動啦！** 你的支持化作了滿天星光，點亮了整個 ENDLESS 伺服器！✨\n感謝 <@${member.id}> 成為我們最耀眼的 Server Booster！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
-            new EmbedBuilder().setColor('#FF73FA').setTitle('💖 【愛心爆擊！伺服器升級】').setDescription(`滴答滴答！是誰送來了滿滿的愛？😍\n超級感謝 <@${member.id}> 的加成火力支援，你的心意是公會成長的最強動力！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
-            new EmbedBuilder().setColor('#FF73FA').setTitle('🚀 【動力引擎啟動！】').setDescription(`轟隆隆！因為 <@${member.id}> 的專屬加成，我們的公會正全速向更棒的未來起飛啦！🛸\n謝謝你願意把這份珍貴的禮物留給我們！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
-            new EmbedBuilder().setColor('#FF73FA').setTitle('🏰 【ENDLESS 的堅固基石】').setDescription(`每一座偉大的城堡，都需要最堅固的基石！🛡️\n向我們尊貴的守護者 <@${member.id}> 致敬，感謝你的加成贊助！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
-            new EmbedBuilder().setColor('#FF73FA').setTitle('💎 【尊榮 VIP 降臨】').setDescription(`閃閃發光的粉紅徽章亮起！✨\n讓我們掌聲歡迎 <@${member.id}> 用行動支持 ENDLESS，這份心意我們一定會好好珍惜！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
-            new EmbedBuilder().setColor('#FF73FA').setTitle('🌟 【奇蹟守護者】').setDescription(`你的無私奉獻，就像守護 ENDLESS 的魔法護盾！🔮\n超級感謝 <@${member.id}> 的加成，讓我們的伺服器變得更加與眾不同！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
-            new EmbedBuilder().setColor('#FF73FA').setTitle('🍷 【酒館的最強金主】').setDescription(`快看！是誰幫公會酒館升級了高級沙發？🛋️\n讓我們敬 <@${member.id}> 一杯，謝謝老闆的熱情加成贊助！（乾杯🍻）\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
-            new EmbedBuilder().setColor('#FF73FA').setTitle('👑 【無可取代的寶藏】').setDescription(`滴！系統偵測到一枚閃閃發光的寶藏夥伴！🎁\n萬分感謝 <@${member.id}> 對伺服器的加成，你絕對是公會最珍貴的寶物！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
-            new EmbedBuilder().setColor('#FF73FA').setTitle('🎆 【煙火為你綻放】').setDescription(`砰！因為你的加成，伺服器的夜空綻放了最美的專屬煙火！🎇\n感謝 <@${member.id}>，ENDLESS 因為有你而更加精采！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`),
-            new EmbedBuilder().setColor('#FF73FA').setTitle('🎀 【溫暖的擁抱】').setDescription(`你的支持就像冬天裡的一杯熱可可，暖暖地流進了我們心裡... ☕\n謝謝 <@${member.id}> 的加成贊助，愛你喔！🥰\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`)
+        
+        // 隨機選出一張橫幅大圖
+        const randomImage = boostBannerImages[Math.floor(Math.random() * boostBannerImages.length)];
+        
+        // 10種文案 (只改變 Description 的內容)
+        const boostDescriptions = [
+            `**太感動啦！** 你的支持化作了滿天星光，點亮了整個 ENDLESS 伺服器！✨\n感謝 <@${member.id}> 成為我們最耀眼的 Server Booster！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`,
+            `滴答滴答！是誰送來了滿滿的愛？😍\n超級感謝 <@${member.id}> 的加成火力支援，你的心意是公會成長的最強動力！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`,
+            `轟隆隆！因為 <@${member.id}> 的專屬加成，我們的公會正全速向更棒的未來起飛啦！🛸\n謝謝你願意把這份珍貴的禮物留給我們！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`,
+            `每一座偉大的城堡，都需要最堅固的基石！🛡️\n向我們尊貴的守護者 <@${member.id}> 致敬，感謝你的加成贊助！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`,
+            `閃閃發光的粉紅徽章亮起！✨\n讓我們掌聲歡迎 <@${member.id}> 用行動支持 ENDLESS，這份心意我們一定會好好珍惜！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`,
+            `你的無私奉獻，就像守護 ENDLESS 的魔法護盾！🔮\n超級感謝 <@${member.id}> 的加成，讓我們的伺服器變得更加與眾不同！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`,
+            `快看！是誰幫公會酒館升級了高級沙發？🛋️\n讓我們敬 <@${member.id}> 一杯，謝謝老闆的熱情加成贊助！（乾杯🍻）\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`,
+            `滴！系統偵測到一枚閃閃發光的寶藏夥伴！🎁\n萬分感謝 <@${member.id}> 對伺服器的加成，你絕對是公會最珍貴的寶物！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`,
+            `砰！因為你的加成，伺服器的夜空綻放了最美的專屬煙火！🎇\n感謝 <@${member.id}>，ENDLESS 因為有你而更加精采！\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`,
+            `你的支持就像冬天裡的一杯熱可可，暖暖地流進了我們心裡... ☕\n謝謝 <@${member.id}> 的加成贊助，愛你喔！🥰\n\n💎 **目前伺服器累計共有 ${boostCount} 個加成！**`
         ];
 
-        const randomEmbed = boostEmbeds[Math.floor(Math.random() * boostEmbeds.length)]
-            .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
-            // 🖼️ 圖片設定：使用穩定支援的圖片網址
-            .setImage('https://cdn.discordapp.com/attachments/1539719568065560656/1540947668430495754/file_000000002f708206a62ff6600b3bbc41.png?ex=6a8bced9&is=6a8a7d59&hm=4051d76562215866856e85981c406c59fd045b9a55e8affcad326e530288adc0&') 
-            .setFooter({ text: 'ENDLESS 感謝您的支持與陪伴', iconURL: member.guild.iconURL() })
+        const randomDescription = boostDescriptions[Math.floor(Math.random() * boostDescriptions.length)];
+
+        // 🌟 打造高質感 Embed
+        const thankYouEmbed = new EmbedBuilder()
+            .setColor('#FFB6C1') // 溫暖粉橘色
+            .setAuthor({ 
+                name: member.displayName, // 顯示使用者的群組暱稱
+                iconURL: member.user.displayAvatarURL({ dynamic: true }) // 顯示使用者大頭貼
+            })
+            .setTitle('💖 THANK YOU FOR YOUR BOOST')
+            .setDescription(randomDescription)
+            .setThumbnail('https://cdn.discordapp.com/attachments/1539719568065560656/1540960580975886407/star_icon.png') // 你可以把這個換成你喜歡的裝飾小圖示
+            .setImage(randomImage) // 隨機橫幅大圖
+            .setFooter({ text: `感謝 <@${member.user.tag}> 的貢獻與努力，祝你一切順利 🤍`, iconURL: member.guild.iconURL() })
             .setTimestamp();
 
+        // 獨立於 Embed 之外的 ping 訊息 (Message Content)
+        const pingContent = `🎊 **[加成圖示] <@${member.id}> 觸發了伺服器感謝加成 💕** 🎊`;
+        const testContent = `🎊 **[私密測試預覽] <@${member.id}> 觸發了伺服器感謝加成 💕** 🎊`;
+
         if (isTest && interaction) {
-            await interaction.editReply({ content: `🎊 **[私密測試預覽] 伺服器收到了一份珍貴的禮物！** 🎊`, embeds: [randomEmbed] });
+            await interaction.editReply({ content: testContent, embeds: [thankYouEmbed] });
         } else if (boostChannel) {
-            await boostChannel.send({ content: `🎊 **狂賀！伺服器收到了一份珍貴的禮物！** 🎊`, embeds: [randomEmbed] });
+            await boostChannel.send({ content: pingContent, embeds: [thankYouEmbed] });
         }
 
         if (!isTest) {
