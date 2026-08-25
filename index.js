@@ -11,7 +11,8 @@ const {
     ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, 
     TextInputStyle, EmbedBuilder, REST, Routes,
     StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
-    PermissionFlagsBits, ApplicationCommandOptionType 
+    PermissionFlagsBits, ApplicationCommandOptionType,
+    MessageFlags // 🌟 新增：用於替換過時的 ephemeral 寫法
 } = require('discord.js');
 const express = require('express');
 const admin = require('firebase-admin');
@@ -513,7 +514,7 @@ client.on('interactionCreate', async interaction => {
             const hasAdminPerm = interaction.member.permissions.has(PermissionFlagsBits.Administrator); 
 
             if (cmd === '星光紅毯設定') {
-                await interaction.deferReply({ ephemeral: true });
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
                 if (!interaction.member.premiumSince) {
                     return interaction.editReply('❌ 很抱歉，這個酷炫的功能是 **Server Booster (伺服器加成者)** 專屬的特權喔！趕快贊助伺服器解鎖吧！✨');
                 }
@@ -527,18 +528,18 @@ client.on('interactionCreate', async interaction => {
 
             // 確保權限控管
             if ((cmd === '解鎖權限' || cmd === '發布小指南' || cmd === '查詢目前公會成員' || cmd === '查詢目前親友團' || cmd === '同步更名' || cmd === '檢查補發感謝' || cmd === '測試感謝卡' || cmd === '重播感謝卡' || cmd === '清除資料' || cmd === '清除訊息') && !isOwner && !hasAdminRole && !hasAdminPerm) {
-                return interaction.reply({ content: '❌ 很抱歉，此指令僅限幹部使用。', ephemeral: true });
+                return interaction.reply({ content: '❌ 很抱歉，此指令僅限幹部使用。', flags: MessageFlags.Ephemeral });
             }
 
             if (cmd === '測試感謝卡') {
-                await interaction.deferReply({ ephemeral: true });
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
                 const boostChannel = await interaction.guild.channels.fetch(config.channels.boostThanks).catch(() => null);
                 await checkAndThankBooster(interaction.member, boostChannel, 'test', interaction);
                 return;
             }
 
             if (cmd === '重播感謝卡') {
-                await interaction.deferReply({ ephemeral: true }); 
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral }); 
                 const targetUser = interaction.options.getUser('玩家');
                 const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
 
@@ -558,7 +559,7 @@ client.on('interactionCreate', async interaction => {
             }
 
             if (cmd === '檢查補發感謝') {
-                await interaction.deferReply({ ephemeral: true });
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
                 await interaction.editReply('⏳ 正在掃描伺服器加成者名單，請稍候...');
                 try {
                     const boostChannel = await interaction.guild.channels.fetch(config.channels.boostThanks).catch(() => null);
@@ -604,12 +605,12 @@ client.on('interactionCreate', async interaction => {
                         { label: '刪除職業', description: '移除不玩的職業身分', value: 'action_remove_class', emoji: '🗑️' }
                     ]);
 
-                await interaction.reply({ content: '✅ 小指南發布成功！', ephemeral: true });
+                await interaction.reply({ content: '✅ 小指南發布成功！', flags: MessageFlags.Ephemeral });
                 return interaction.channel.send({ embeds: [guideEmbed], components: [new ActionRowBuilder().addComponents(actionSelect)] });
             }
 
             if (cmd === '同步更名') {
-                await interaction.deferReply({ ephemeral: true });
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
                 await interaction.editReply('⏳ 開始同步伺服器成員暱稱，如果人數較多這會需要幾十秒的時間，請稍候...');
                 try {
                     const snapshot = await db.collection('members').get();
@@ -627,12 +628,12 @@ client.on('interactionCreate', async interaction => {
                             } else { failCount++; }
                         } catch (err) { failCount++; }
                     }
-                    return interaction.followUp({ content: `✅ **同步更名作業已完成！**\n✨ 成功更新：**${successCount}** 人\n⚠️ 無法更新/已離開：**${failCount}** 人`, ephemeral: true });
+                    return interaction.followUp({ content: `✅ **同步更名作業已完成！**\n✨ 成功更新：**${successCount}** 人\n⚠️ 無法更新/已離開：**${failCount}** 人`, flags: MessageFlags.Ephemeral });
                 } catch (error) { return interaction.editReply('❌ 執行同步更名時發生資料庫錯誤。'); }
             }
 
             if (cmd === '查詢目前公會成員') {
-                await interaction.deferReply({ ephemeral: true }); 
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral }); 
                 const embed = await generateMemberLeaderboard();
                 if(embed && typeof embed !== 'string') {
                     return interaction.editReply({ embeds: [embed] });
@@ -642,7 +643,7 @@ client.on('interactionCreate', async interaction => {
             }
 
             if (cmd === '查詢目前親友團') {
-                await interaction.deferReply({ ephemeral: true }); 
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral }); 
                 const embed = await generateFriendLeaderboard();
                  if(embed && typeof embed !== 'string') {
                     return interaction.editReply({ embeds: [embed] });
@@ -652,7 +653,7 @@ client.on('interactionCreate', async interaction => {
             }
 
             if (cmd === '清除資料') {
-                await interaction.deferReply({ ephemeral: true });
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
                 const targetUser = interaction.options.getUser('目標');
                 if (!targetUser) return interaction.editReply('❌ 找不到該成員。');
                 try {
@@ -667,7 +668,7 @@ client.on('interactionCreate', async interaction => {
             }
 
             if (cmd === '清除訊息') {
-                await interaction.deferReply({ ephemeral: true });
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
                 const amount = interaction.options.getInteger('數量');
                 try {
                     const deleted = await interaction.channel.bulkDelete(amount, true);
@@ -689,7 +690,7 @@ client.on('interactionCreate', async interaction => {
                 return interaction.reply({ 
                     content: isMember ? '您選擇了「公會成員」，請選擇您的職業 (可多選)：' : '您選擇了「親友團」，請選擇您的職業 (可多選)：', 
                     components: [new ActionRowBuilder().addComponents(selectMenu)],
-                    ephemeral: true
+                    flags: MessageFlags.Ephemeral
                 });
             }
 
@@ -743,7 +744,7 @@ client.on('interactionCreate', async interaction => {
                         }
                     } catch (err) {}
 
-                } catch (error) { return interaction.followUp({ content: '❌ 處理失敗，請確認機器人權限。', ephemeral: true }); }
+                } catch (error) { return interaction.followUp({ content: '❌ 處理失敗，請確認機器人權限。', flags: MessageFlags.Ephemeral }); }
             }
 
             if (interaction.customId.startsWith('reject_')) {
@@ -758,7 +759,7 @@ client.on('interactionCreate', async interaction => {
                         { label: '查無此人 / 資格不符', description: '遊戲內查無此人或黑名單', value: '幹部們在遊戲內暫時查無此帳號，或是資格有點疑慮。如果有誤會，歡迎找幹部確認喔！', emoji: '🚫' },
                         { label: '✍️ 自行輸入理由...', description: '手動輸入其他原因', value: 'custom' }
                     ]);
-                return interaction.reply({ content: '請選擇要退回該申請的原因：', components: [new ActionRowBuilder().addComponents(reasonSelect)], ephemeral: true });
+                return interaction.reply({ content: '請選擇要退回該申請的原因：', components: [new ActionRowBuilder().addComponents(reasonSelect)], flags: MessageFlags.Ephemeral });
             }
         }
 
@@ -778,7 +779,7 @@ client.on('interactionCreate', async interaction => {
                 }
 
                 if (action === 'action_add_class') {
-                    await interaction.deferReply({ ephemeral: true });
+                    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
                     const doc = await db.collection('members').doc(interaction.user.id).get();
                     if (!doc.exists) return interaction.editReply('❌ 找不到您的資料，請先申請加入！');
                     const addSelect = new StringSelectMenuBuilder().setCustomId(`add_extra_class_${config.guildId}`).setPlaceholder('請選擇要新增的職業...').addOptions(classOptionsList);
@@ -786,7 +787,7 @@ client.on('interactionCreate', async interaction => {
                 }
 
                 if (action === 'action_remove_class') {
-                    await interaction.deferReply({ ephemeral: true });
+                    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
                     const doc = await db.collection('members').doc(interaction.user.id).get();
                     if (!doc.exists) return interaction.editReply('❌ 找不到您的資料，請先申請加入！');
                     
@@ -890,7 +891,7 @@ client.on('interactionCreate', async interaction => {
                 const level = interaction.fields.getTextInputValue('game_level');
                 const code = interaction.fields.getTextInputValue('game_code');
                 
-                await interaction.deferReply({ ephemeral: true }); 
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral }); 
 
                 const sendToApprovalChannel = async (attachment = null, timeoutNote = false) => {
                     try {
@@ -963,7 +964,7 @@ client.on('interactionCreate', async interaction => {
                 const finalClasses = selectedClassesStr.split('-');
                 const nameInput = interaction.fields.getTextInputValue('game_name');
                 
-                await interaction.deferReply({ ephemeral: true }); 
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral }); 
                 try {
                     let rolesToAdd = [config.roles.familyFriend];
                     finalClasses.forEach(cls => {
@@ -999,7 +1000,7 @@ client.on('interactionCreate', async interaction => {
                 const msgId = parts[4];
                 const reason = interaction.fields.getTextInputValue('reject_reason');
                 
-                await interaction.deferReply({ ephemeral: true });
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
                 try {
                     const member = await interaction.guild.members.fetch(targetUserId);
                     const rejectMsg = `💌 嗨嗨～這裡是 ENDLESS 審核中心。\n非常抱歉，你剛才送出的申請暫時未通過審核喔 🥺\n\n**幹部留給你的悄悄話 / 退回原因：**\n💬 *${reason}*\n\n別灰心！只要調整一下，隨時歡迎你再次送出申請！我們的大門永遠為你敞開，期待你準備好後再次回來找我們玩喔！💪✨`;
@@ -1018,7 +1019,7 @@ client.on('interactionCreate', async interaction => {
                 const newName = interaction.fields.getTextInputValue('update_name');
                 const newLevel = interaction.fields.fields.get('update_level') ? interaction.fields.getTextInputValue('update_level') : 'N/A';
                 
-                await interaction.deferReply({ ephemeral: true }); 
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral }); 
                 try {
                     const doc = await db.collection('members').doc(interaction.user.id).get();
                     if (!doc.exists) return interaction.editReply({ content: '❌ 找不到您的資料。可能是您還沒申請，或是幹部尚未審核通過喔！' });
@@ -1038,6 +1039,8 @@ client.on('interactionCreate', async interaction => {
             }
         }
     } catch (globalError) {
+        // 🌟 新增：忽略 DiscordAPIError[10062] (機器人重啟時，玩家送出的互動超時)
+        if (globalError.code === 10062) return; 
         console.error("🚨 互動處理發生未預期錯誤：", globalError);
     }
 });
