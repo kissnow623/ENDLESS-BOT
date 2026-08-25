@@ -75,7 +75,7 @@ const classOptionsList = Object.keys(config.roles.classes).map(className =>
     new StringSelectMenuOptionBuilder().setLabel(className).setValue(className)
 );
 
-// 🌟 公會成員：10 款隨機迎新
+// 🌟 公會成員：30 款隨機迎新
 const welcomeMessages = [
     (userId) => `🎉 掌聲加尖叫！讓我們熱烈歡迎 <@${userId}> 閃亮登場！✨ 大家快來跟他打聲招呼，準備一起展開在 ENDLESS 的大冒險啦！🚀`,
     (userId) => `🍻 吧台的小夥伴請注意，我們有新客人啦！歡迎 <@${userId}> 踏入 ENDLESS 酒館！趕緊拉張椅子坐下，今晚我們不醉不歸（或是打王打到天亮）！🍖`,
@@ -86,10 +86,30 @@ const welcomeMessages = [
     (userId) => `🎶 噔噔噔噔～自帶專屬 BGM 的 <@${userId}> 華麗登場！🎤 大家快把螢光棒揮起來，歡迎我們 ENDLESS 的最新力作！`,
     (userId) => `🍰 新鮮出爐的熱騰騰新成員來囉！歡迎 <@${userId}> 加入 ENDLESS！🤤 頻道裡隨便逛，遇到打不過的王記得大喊救命，我們隨傳隨到！`,
     (userId) => `🎮 玩家 ［ <@${userId}> ］ 已成功連接至 ENDLESS 伺服器！✅ 裝備檢查完畢，藥水確認帶齊，馬上開始我們無盡的冒險旅程吧！`,
-    (userId) => `🏆 號外號外！據說實力超強、顏值超高的 <@${userId}> 選擇加入了 ENDLESS！😎 各位小夥伴快出來排隊歡迎，以後打寶掉寶率就靠你加持啦！✨`
+    (userId) => `🏆 號外號外！據說實力超強、顏值超高的 <@${userId}> 選擇加入了 ENDLESS！😎 各位小夥伴快出來排隊歡迎，以後打寶掉寶率就靠你加持啦！✨`,
+    (userId) => `⚔️ 裝備強化成功！歡迎 <@${userId}> 帶著閃亮的武器加入 ENDLESS！今晚要一起去哪裡刷寶呢？`,
+    (userId) => `📜 契約已簽訂！<@${userId}> 正式成為 ENDLESS 的一員！把公會技能點滿，我們準備出發囉！`,
+    (userId) => `🍄 噗通！<@${userId}> 像是掉進水溝的綠水靈一樣（？）突然出現啦！歡迎來到 ENDLESS！`,
+    (userId) => `📣 廣播：請大家注意，超級新星 <@${userId}> 已經登入 ENDLESS 伺服器，請各位準備好熱烈歡迎！`,
+    (userId) => `🛡️ 盾牌架好，法杖舉起！<@${userId}> 加入了我們的遠征隊！有了你，未來的王團絕對沒問題！`,
+    (userId) => `🎁 每日登入獎勵發放！恭喜 ENDLESS 獲得了名為 <@${userId}> 的超棒新成員！`,
+    (userId) => `🌟 叮！<@${userId}> 已經成功轉職為「ENDLESS 公會成員」！快來公會大廳領取你的專屬歡迎！`,
+    (userId) => `🚀 綁好安全帶，<@${userId}> 已經搭乘 ENDLESS 號太空船登入啦！未來的冒險請多多指教！`,
+    (userId) => `🍖 營火已經升起！歡迎 <@${userId}> 來到 ENDLESS 的營地，坐下來分享你的冒險傳說吧！`,
+    (userId) => `💎 稀有掉落物出現！原來是閃閃發光的 <@${userId}> 加入了公會！大家快來沾沾運氣！`,
+    (userId) => `🗺️ 展開冒險地圖，<@${userId}> 的座標已經鎖定在 ENDLESS 啦！準備好一起探索未知領域了嗎？`,
+    (userId) => `🎊 狂爆灑花！讓我們用最熱烈的掌聲歡迎 <@${userId}> 來到 ENDLESS 大家庭！`,
+    (userId) => `🔮 水晶球顯示，<@${userId}> 將會為 ENDLESS 帶來無限的歡樂與戰力！歡迎你的加入！`,
+    (userId) => `🏰 公會大門緩緩開啟，勇敢的 <@${userId}> 踏入了 ENDLESS 的殿堂！我們在這裡等你很久啦！`,
+    (userId) => `🎶 吹響勝利的號角！歡迎 <@${userId}> 加入我們的行列，一起在 ENDLESS 創造不朽的傳奇！`,
+    (userId) => `🍕 披薩已經訂好，可樂也倒好了！就等 <@${userId}> 加入 ENDLESS 的派對啦！`,
+    (userId) => `⚡ 閃電劃破天際！<@${userId}> 帶著雷霆萬鈞的氣勢加入了 ENDLESS！`,
+    (userId) => `💌 一封神秘的邀請函將 <@${userId}> 帶到了 ENDLESS！很高興能在這裡遇見你！`,
+    (userId) => `👑 為我們的陣容再添一員猛將！歡迎 <@${userId}> 加入 ENDLESS，未來的榮耀我們一起爭取！`,
+    (userId) => `🌈 雨過天晴，一道彩虹帶來了我們的新夥伴 <@${userId}>！歡迎來到 ENDLESS！`
 ];
 
-// 🌟 親友團：10 款專屬隨機迎新
+// 🌟 親友團：30 款專屬隨機迎新
 const welcomeFriendMessages = [
     (userId) => `🎈 叮咚！ENDLESS 迎來了一位超酷的親友團新夥伴！<@${userId}> 已經順利解鎖頻道囉～大家快把最熱情的貼圖刷起來！🔥🔥`,
     (userId) => `🌟 閃亮登場！歡迎親友團的新朋友 <@${userId}> 來到 ENDLESS！隨便坐隨便聊，當自己家就好啦！🛋️`,
@@ -100,7 +120,27 @@ const welcomeFriendMessages = [
     (userId) => `🎉 撒花撒花！熱烈歡迎 <@${userId}> 成為我們的專屬親友！未來的日子裡，請多多指教囉！🥰`,
     (userId) => `🎮 玩家 ［ <@${userId}> ］ 已成功加入 ENDLESS 親友團陣線！準備好跟我們一起在頻道裡尬聊了嗎？😎`,
     (userId) => `🌈 捕捉到野生好朋友！歡迎 <@${userId}> 來到 ENDLESS！在這裡沒有壓力，只有滿滿的歡樂與溫暖喔！💖`,
-    (userId) => `🚀 咻～的一聲，<@${userId}> 飛進了我們的親友團！很高興認識你，快去頻道跟大家打個招呼吧！👋`
+    (userId) => `🚀 咻～的一聲，<@${userId}> 飛進了我們的親友團！很高興認識你，快去頻道跟大家打個招呼吧！👋`,
+    (userId) => `🛋️ 準備好最舒服的沙發！歡迎親友團新朋友 <@${userId}> 來 ENDLESS 串門子！`,
+    (userId) => `☕ 泡好熱咖啡了，<@${userId}> 歡迎來到 ENDLESS 親友團！來找個空位坐下聊聊天吧！`,
+    (userId) => `🎈 驚喜包拆開！原來是超可愛的 <@${userId}> 來到 ENDLESS 親友團啦！大家快來打招呼！`,
+    (userId) => `🎤 麥克風測試！請 <@${userId}> 發表加入 ENDLESS 親友團的感言！(遞麥克風)`,
+    (userId) => `🌸 春風拂來，把 <@${userId}> 吹進了我們的親友團！很高興認識你呀！`,
+    (userId) => `🍿 爆米花準備好了！<@${userId}> 歡迎來到 ENDLESS，我們已經準備好聽你的八卦...阿不是，是故事了！`,
+    (userId) => `🌟 捕捉到一隻迷路的 <@${userId}>！歡迎來到 ENDLESS 親友團，這裡以後就是你的第二個家啦！`,
+    (userId) => `🥂 舉起手中的果汁！讓我們為 <@${userId}> 加入 ENDLESS 親友團乾杯！`,
+    (userId) => `🐾 順著神秘的腳印，<@${userId}> 找到了 ENDLESS 親友團的秘密基地！歡迎光臨！`,
+    (userId) => `🎨 我們的畫布上又多了一抹燦爛的色彩！歡迎 <@${userId}> 點綴 ENDLESS 親友團！`,
+    (userId) => `🎧 點播一首歡迎曲！<@${userId}> 已經順利連線至 ENDLESS 親友團語音頻道（的文字版）！`,
+    (userId) => `🍩 帶了甜甜圈來拜訪嗎？歡迎 <@${userId}> 踏入 ENDLESS 親友團，這裡充滿了歡樂和卡路里！`,
+    (userId) => `🌙 夜幕低垂，最適合和新朋友聊天了！歡迎 <@${userId}> 加入 ENDLESS 親友團的深夜食堂！`,
+    (userId) => `🧸 抱著熊熊布偶，<@${userId}> 走進了我們的親友團！太可愛了，大家快來歡迎！`,
+    (userId) => `💌 收到一封來自遠方的信！原來是 <@${userId}> 決定加入 ENDLESS 親友團啦！`,
+    (userId) => `🎪 馬戲團開演啦！不對，是 ENDLESS 親友團迎來了充滿活力的 <@${userId}>！`,
+    (userId) => `🚲 騎著腳踏車路過？既然來了就別走啦！歡迎 <@${userId}> 加入 ENDLESS 親友團！`,
+    (userId) => `📸 茄子！拍一張大合照，記錄 <@${userId}> 加入 ENDLESS 親友團的歷史性一刻！`,
+    (userId) => `🌻 像向日葵一樣溫暖的 <@${userId}> 來到 ENDLESS 親友團啦！把快樂傳染給大家吧！`,
+    (userId) => `🛸 外星人綁架失敗，所以 <@${userId}> 掉進了 ENDLESS 親友團！既來之則安之，一起玩吧！`
 ];
 
 // Booster：30 款浮誇出場台詞 (暫時隱藏不使用)
@@ -156,7 +196,7 @@ async function updateNickname(member, gameName, roleType, classesArray) {
 }
 
 // ==========================================
-// 🌟 核心函式：公會成員排行榜格式化
+// 🌟 核心函式：公會成員排行榜格式化 (已加入容錯)
 // ==========================================
 async function generateMemberLeaderboard() {
     try {
@@ -165,7 +205,9 @@ async function generateMemberLeaderboard() {
         
         let members = [];
         snapshot.forEach(doc => members.push(doc.data()));
-        members.sort((a, b) => parseInt(b.gameLevel) - parseInt(a.gameLevel));
+        
+        // 加入容錯：確保非數字內容不會破壞排序
+        members.sort((a, b) => (parseInt(b.gameLevel) || 0) - (parseInt(a.gameLevel) || 0));
         
         let description = `目前公會總人數：**${members.length}** 人\n\n**【 成員等級排行榜 】**\n`;
         members.forEach((m, index) => { 
@@ -229,7 +271,12 @@ async function checkAndThankBooster(member, boostChannel, mode = 'normal', inter
             { title: '🍷 酒館的最強金主 🍷', text: '**大金主降臨！** 謝謝老闆幫公會酒館升級高級沙發，讓我們敬你一杯！🍻' },
             { title: '👑 無可取代的寶藏 👑', text: '**捕捉到寶藏！** 系統偵測到一枚閃閃發光的寶藏夥伴，你絕對是最珍貴的！🎁' },
             { title: '🎆 煙火為你綻放 🎆', text: '**砰砰砰！** 因為你的加成，伺服器的夜空綻放了最美的專屬煙火！🎇' },
-            { title: '🎀 溫暖的擁抱 🎀', text: '**溫暖的擁抱！** 你的支持就像冬天裡的一杯熱可可，暖暖地流進了我們心裡... ☕' }
+            { title: '🎀 溫暖的擁抱 🎀', text: '**溫暖的擁抱！** 你的支持就像冬天裡的一杯熱可可，暖暖地流進了我們心裡... ☕' },
+            { title: '💸 乾爹/乾媽撒幣啦 💸', text: '**財力展示！** 感謝您為伺服器注入了滿滿的魔法金幣，ENDLESS 因為您而更加奢華！💰' },
+            { title: '👑 絕對領域展開 👑', text: '**超強氣場！** 專屬的加成領域已經啟動，感謝您為公會帶來無與倫比的榮耀與光芒！✨' },
+            { title: '🍄 頂級超級藥水 🍄', text: '**能量滿滿！** 您的 Boost 就像一罐超級藥水，讓整個伺服器的活力瞬間回滿啦！❤️‍🔥' },
+            { title: '🌌 星際航線解鎖 🌌', text: '**飛向宇宙！** 有了您的推進器加持，ENDLESS 已經準備好突破天際，航向未知的新星系！🚀' },
+            { title: '🏅 殿堂級 MVP 降臨 🏅', text: '**全場歡呼！** 您就是我們公會最耀眼的 MVP，感謝您賜予伺服器這份尊貴的加成力量！🏆' }
         ];
 
         const randomChoice = boostVariations[Math.floor(Math.random() * boostVariations.length)];
@@ -372,36 +419,45 @@ client.once('clientReady', async () => {
 });
 
 // ==========================================
-// 🚀 每月初自動發布排行榜邏輯
+// 🚀 每月初自動發布排行榜邏輯 (修復 24.8 天上限限制)
 // ==========================================
 function scheduleMonthlyLeaderboard() {
     const now = new Date();
     const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0); 
     const timeUntilNextMonth = nextMonth.getTime() - now.getTime();
+    
+    const MAX_TIMEOUT = 2147483647; // Node.js setTimeout 最大值 (約 24.8 天)
 
-    setTimeout(async () => {
-        try {
-            const guild = client.guilds.cache.get(config.guildId);
-            if (!guild) return;
+    if (timeUntilNextMonth > MAX_TIMEOUT) {
+        // 如果超過上限，先等待 24 天，然後再重新計算
+        setTimeout(scheduleMonthlyLeaderboard, MAX_TIMEOUT);
+    } else {
+        // 如果在安全範圍內，設定實際發布的計時器
+        setTimeout(async () => {
+            try {
+                const guild = client.guilds.cache.get(config.guildId);
+                if (!guild) return;
 
-            const channelId = config.channels.leaderboardChannel;
-            if (!channelId || channelId === '這裡填入你想要發布排行榜的頻道ID') return;
+                const channelId = config.channels.leaderboardChannel;
+                if (!channelId || channelId === '這裡填入你想要發布排行榜的頻道ID') return;
 
-            const targetChannel = await client.channels.fetch(channelId).catch(() => null);
-            if (!targetChannel) return;
+                const targetChannel = await client.channels.fetch(channelId).catch(() => null);
+                if (!targetChannel) return;
 
-            const memberEmbed = await generateMemberLeaderboard();
-            const friendEmbed = await generateFriendLeaderboard();
+                const memberEmbed = await generateMemberLeaderboard();
+                const friendEmbed = await generateFriendLeaderboard();
 
-            if (memberEmbed && typeof memberEmbed !== 'string') await targetChannel.send({ embeds: [memberEmbed] });
-            if (friendEmbed && typeof friendEmbed !== 'string') await targetChannel.send({ embeds: [friendEmbed] });
+                if (memberEmbed && typeof memberEmbed !== 'string') await targetChannel.send({ embeds: [memberEmbed] });
+                if (friendEmbed && typeof friendEmbed !== 'string') await targetChannel.send({ embeds: [friendEmbed] });
 
-        } catch (error) {
-            console.error('❌ 自動發佈排行榜時發生錯誤：', error);
-        } finally {
-            scheduleMonthlyLeaderboard();
-        }
-    }, timeUntilNextMonth);
+            } catch (error) {
+                console.error('❌ 自動發佈排行榜時發生錯誤：', error);
+            } finally {
+                // 發布完成後，重新排程下個月
+                scheduleMonthlyLeaderboard();
+            }
+        }, timeUntilNextMonth);
+    }
 }
 
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
