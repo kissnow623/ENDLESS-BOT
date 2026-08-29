@@ -12,7 +12,7 @@ const {
     TextInputStyle, EmbedBuilder, REST, Routes,
     StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
     PermissionFlagsBits, ApplicationCommandOptionType,
-    MessageFlags // 🌟 新增：用於替換過時的 ephemeral 寫法
+    MessageFlags 
 } = require('discord.js');
 const express = require('express');
 const admin = require('firebase-admin');
@@ -47,16 +47,15 @@ const ADMIN_ROLES = [
 const config = {
     guildId: '1539475243733622794', 
     features: {
-        // 🌟 星光紅毯總開關：false (關閉隱藏), true (開啟啟用)
         redCarpetEnabled: false 
     },
     channels: { 
         approval: '1539972747545808937',
         welcome: '1539971422842261601',       
         welcomeFriend: '1539904561941188608',
-        boostThanks: '1540726577443115109', // 🌟 Server Boost 感謝卡推播頻道
-        chatLounge: '1539904561941188608',   // 🌟 星光紅毯鋪設頻道
-        leaderboardChannel: '這裡填入你想要發布排行榜的頻道ID' // 🌟 新增：每月自動發布排行榜的頻道
+        boostThanks: '1540726577443115109', 
+        chatLounge: '1539904561941188608',   
+        leaderboardChannel: '這裡填入你想要發布排行榜的頻道ID' 
     },
     roles: {
         adminRoles: ADMIN_ROLES, 
@@ -207,7 +206,6 @@ async function generateMemberLeaderboard() {
         let members = [];
         snapshot.forEach(doc => members.push(doc.data()));
         
-        // 加入容錯：確保非數字內容不會破壞排序
         members.sort((a, b) => (parseInt(b.gameLevel) || 0) - (parseInt(a.gameLevel) || 0));
         
         let description = `目前公會總人數：**${members.length}** 人\n\n**【 成員等級排行榜 】**\n`;
@@ -349,15 +347,37 @@ app.listen(PORT, () => console.log(`🌐 網頁伺服器已啟動於 Port ${PORT
 // 🤖 4️⃣ 建立 Discord Client 與 指令註冊
 // ==========================================
 const client = new Client({
-    intents: [ GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.DirectMessages, GatewayIntentBits.MessageContent ],
+    intents: [ 
+        GatewayIntentBits.Guilds, 
+        GatewayIntentBits.GuildMembers, 
+        GatewayIntentBits.GuildMessages, 
+        GatewayIntentBits.DirectMessages, 
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildInvites // 🌟 必須新增：讀取伺服器邀請碼權限，才能追蹤引薦人
+    ],
     partials: [ Partials.User, Partials.GuildMember, Partials.Channel, Partials.Message ]
 });
+
+// 🌟 新增：用於快取所有邀請連結的記憶體區塊
+const guildInvites = new Map();
 
 client.once('clientReady', async () => {
     console.log(`🤖 機器人登入成功：${client.user.tag}!`);
     const adminPerms = PermissionFlagsBits.Administrator.toString();
 
-    // 🌟 星光紅毯設定指令被註解隱藏，不會顯示在指令清單中
+    // 🌟 啟動時快取伺服器內所有的邀請連結
+    client.guilds.cache.forEach(async guild => {
+        try {
+            const invites = await guild.invites.fetch();
+            const codeUses = new Map();
+            invites.forEach(inv => codeUses.set(inv.code, inv.uses));
+            guildInvites.set(guild.id, codeUses);
+            console.log(`✅ 已快取伺服器 [${guild.name}] 的邀請碼資料，邀請追蹤啟動。`);
+        } catch (err) {
+            console.log(`⚠️ 無法獲取伺服器 [${guild.name}] 的邀請碼，請確認機器人是否有「管理伺服器」權限。`);
+        }
+    });
+
     const commands = [
         { name: '解鎖權限', description: '發布加入 ENDLESS 或是成為親友團的申請面板 (僅限幹部)', default_member_permissions: adminPerms },
         { name: '發布小指南', description: '發布 ENDLESS 實用功能小指南面板 (僅限幹部)', default_member_permissions: adminPerms },
@@ -366,31 +386,9 @@ client.once('clientReady', async () => {
         { name: '同步更名', description: '批次同步資料庫中所有成員的最新暱稱格式與符號 (僅限幹部)', default_member_permissions: adminPerms },
         { name: '檢查補發感謝', description: '【幹部專屬】掃描伺服器所有加成者，自動為錯過的乾爹乾媽補發感謝卡！', default_member_permissions: adminPerms },
         { name: '測試感謝卡', description: '【幹部專屬】發送一張私密測試用的加成感謝卡 (僅自己可見)', default_member_permissions: adminPerms },
-        { 
-            name: '重播感謝卡', 
-            description: '【幹部專屬】強制公開重播指定玩家的加成感謝卡 (不管以前有沒有發過)', 
-            default_member_permissions: adminPerms,
-            options: [{ name: '玩家', description: '請選擇您要重新感謝的加成者', type: ApplicationCommandOptionType.User, required: true }]
-        },
-        { 
-            name: '清除資料', description: '清除指定成員的資料庫紀錄與身分組 (僅限幹部)', default_member_permissions: adminPerms,
-            options: [{ name: '目標', description: '請選擇要重置資料的成員', type: ApplicationCommandOptionType.User, required: true }]
-        },
-        {
-            name: '清除訊息', description: '快速清除當前頻道指定數量的訊息 (僅限幹部)', default_member_permissions: adminPerms,
-            options: [{ name: '數量', description: '請輸入要清除的訊息數量 (1 到 100)', type: ApplicationCommandOptionType.Integer, required: true, min_value: 1, max_value: 100 }]
-        }
-        /* 
-        🌟 未來如果需要重新開放，只要把這段註解解開即可
-        ,{
-            name: '星光紅毯設定',
-            description: '【Booster專屬】開啟或關閉您每日首次發言的浮誇出場台詞！',
-            options: [{
-                name: '狀態', description: '您要開啟還是關閉紅毯出場設定？', type: ApplicationCommandOptionType.String, required: true,
-                choices: [ { name: '🟢 開啟浮誇出場', value: 'on' }, { name: '🔴 關閉低調潛水', value: 'off' } ]
-            }]
-        }
-        */
+        { name: '重播感謝卡', description: '【幹部專屬】強制公開重播指定玩家的加成感謝卡', default_member_permissions: adminPerms, options: [{ name: '玩家', description: '請選擇您要重新感謝的加成者', type: ApplicationCommandOptionType.User, required: true }] },
+        { name: '清除資料', description: '清除指定成員的資料庫紀錄與身分組 (僅限幹部)', default_member_permissions: adminPerms, options: [{ name: '目標', description: '請選擇要重置資料的成員', type: ApplicationCommandOptionType.User, required: true }] },
+        { name: '清除訊息', description: '快速清除當前頻道指定數量的訊息 (僅限幹部)', default_member_permissions: adminPerms, options: [{ name: '數量', description: '請輸入要清除的訊息數量 (1 到 100)', type: ApplicationCommandOptionType.Integer, required: true, min_value: 1, max_value: 100 }] }
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -420,20 +418,18 @@ client.once('clientReady', async () => {
 });
 
 // ==========================================
-// 🚀 每月初自動發布排行榜邏輯 (修復 24.8 天上限限制)
+// 🚀 每月初自動發布排行榜邏輯
 // ==========================================
 function scheduleMonthlyLeaderboard() {
     const now = new Date();
     const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0); 
     const timeUntilNextMonth = nextMonth.getTime() - now.getTime();
     
-    const MAX_TIMEOUT = 2147483647; // Node.js setTimeout 最大值 (約 24.8 天)
+    const MAX_TIMEOUT = 2147483647; 
 
     if (timeUntilNextMonth > MAX_TIMEOUT) {
-        // 如果超過上限，先等待 24 天，然後再重新計算
         setTimeout(scheduleMonthlyLeaderboard, MAX_TIMEOUT);
     } else {
-        // 如果在安全範圍內，設定實際發布的計時器
         setTimeout(async () => {
             try {
                 const guild = client.guilds.cache.get(config.guildId);
@@ -454,12 +450,54 @@ function scheduleMonthlyLeaderboard() {
             } catch (error) {
                 console.error('❌ 自動發佈排行榜時發生錯誤：', error);
             } finally {
-                // 發布完成後，重新排程下個月
                 scheduleMonthlyLeaderboard();
             }
         }, timeUntilNextMonth);
     }
 }
+
+// ==========================================
+// 🔗 新增：動態維護邀請碼快取
+// ==========================================
+client.on('inviteCreate', invite => {
+    const invites = guildInvites.get(invite.guild.id);
+    if (invites) invites.set(invite.code, invite.uses);
+});
+client.on('inviteDelete', invite => {
+    const invites = guildInvites.get(invite.guild.id);
+    if (invites) invites.delete(invite.code);
+});
+
+// ==========================================
+// 👣 新增：成員加入時，抓出是誰邀請他的
+// ==========================================
+client.on('guildMemberAdd', async member => {
+    try {
+        const cachedInvites = guildInvites.get(member.guild.id);
+        if (!cachedInvites) return;
+
+        const newInvites = await member.guild.invites.fetch().catch(() => null);
+        if (!newInvites) return;
+
+        const usedInvite = newInvites.find(inv => inv.uses > (cachedInvites.get(inv.code) || 0));
+        let inviterData = '無法追蹤 / 未知';
+
+        if (usedInvite && usedInvite.inviter) {
+            inviterData = `<@${usedInvite.inviter.id}>`; 
+        }
+
+        newInvites.forEach(inv => cachedInvites.set(inv.code, inv.uses));
+        guildInvites.set(member.guild.id, cachedInvites);
+
+        await db.collection('inviteTracking').doc(member.id).set({
+            inviter: inviterData,
+            joinedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+    } catch (error) {
+        console.error("❌ 追蹤邀請人發生錯誤：", error);
+    }
+});
 
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
     if (!oldMember.premiumSince && newMember.premiumSince) {
@@ -472,7 +510,6 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 // 🚀 Booster 星光紅毯系統 (目前預設關閉)
 // ==========================================
 client.on('messageCreate', async message => {
-    // 🌟 如果總開關是 false，直接略過所有紅毯邏輯
     if (!config.features.redCarpetEnabled) return;
 
     if (message.author.bot || message.channel.id !== config.channels.chatLounge) return;
@@ -526,7 +563,6 @@ client.on('interactionCreate', async interaction => {
                 return interaction.editReply('✨ 設定成功！已為您開啟浮誇紅毯模式！明天在綜合大廳發言時就會為您鋪上紅毯囉！🌹');
             }
 
-            // 確保權限控管
             if ((cmd === '解鎖權限' || cmd === '發布小指南' || cmd === '查詢目前公會成員' || cmd === '查詢目前親友團' || cmd === '同步更名' || cmd === '檢查補發感謝' || cmd === '測試感謝卡' || cmd === '重播感謝卡' || cmd === '清除資料' || cmd === '清除訊息') && !isOwner && !hasAdminRole && !hasAdminPerm) {
                 return interaction.reply({ content: '❌ 很抱歉，此指令僅限幹部使用。', flags: MessageFlags.Ephemeral });
             }
@@ -707,6 +743,7 @@ client.on('interactionCreate', async interaction => {
                     const gameName = originalEmbed.fields.find(f => f.name.includes('遊戲名稱'))?.value.replace(/`/g, '') || '未知';
                     const gameLevel = originalEmbed.fields.find(f => f.name.includes('等級'))?.value.replace(/`/g, '').replace('LV.', '').trim() || '未知';
                     const gameCode = originalEmbed.fields.find(f => f.name.includes('代碼'))?.value.replace(/`/g, '') || '未知';
+                    const referrer = originalEmbed.fields.find(f => f.name.includes('引薦人'))?.value.replace(/`/g, '') || '無法追蹤 / 未知';
 
                     const member = await interaction.guild.members.fetch(targetUserId);
                     const docRef = db.collection('members').doc(targetUserId);
@@ -724,7 +761,7 @@ client.on('interactionCreate', async interaction => {
 
                     await docRef.set({
                         discordId: targetUserId, discordTag: member.user.tag, gameName: gameName,
-                        gameClasses: finalClasses, gameLevel: gameLevel, gameCode: gameCode, role: '公會成員', 
+                        gameClasses: finalClasses, gameLevel: gameLevel, gameCode: gameCode, referrer: referrer, role: '公會成員', 
                         joinDate: doc.exists && doc.data().joinDate ? doc.data().joinDate : admin.firestore.FieldValue.serverTimestamp()
                     }, { merge: true });
 
@@ -735,6 +772,9 @@ client.on('interactionCreate', async interaction => {
 
                     const updatedEmbed = EmbedBuilder.from(originalEmbed).setColor('#00FF00').setTitle('✅ 審核已通過').setFooter({ text: `由 ${interaction.user.tag} 批准`, iconURL: interaction.user.displayAvatarURL() });
                     await interaction.message.edit({ embeds: [updatedEmbed], components: [] });
+
+                    // 刪除追蹤暫存檔
+                    await db.collection('inviteTracking').doc(targetUserId).delete().catch(()=>{});
 
                     try {
                         const welcomeChannel = await client.channels.fetch(config.channels.welcome);
@@ -765,7 +805,6 @@ client.on('interactionCreate', async interaction => {
 
         // 🔘 下拉式選單
         if (interaction.isStringSelectMenu()) {
-            
             if (interaction.customId === 'select_user_action') {
                 const action = interaction.values[0];
                 
@@ -893,19 +932,25 @@ client.on('interactionCreate', async interaction => {
                 
                 await interaction.deferReply({ flags: MessageFlags.Ephemeral }); 
 
+                // 🌟 新增處：從系統剛剛自動記錄的資料庫中，提取這名成員的邀請人是誰
+                const inviteTrackerDoc = await db.collection('inviteTracking').doc(interaction.user.id).get();
+                const systemDetectedReferrer = inviteTrackerDoc.exists ? inviteTrackerDoc.data().inviter : '無法追蹤 / 未知';
+
                 const sendToApprovalChannel = async (attachment = null, timeoutNote = false) => {
                     try {
                         const channel = await client.channels.fetch(config.channels.approval);
                         if (channel) {
                             const embed = new EmbedBuilder()
                                 .setTitle('🛡️ ENDLESS | 新成員入會申請')
-                                .setDescription(`**<@${interaction.user.id}>** 提交了公會成員申請，請幹部進行審核。`)
+                                .setDescription(`**<@${interaction.user.id}>** (${interaction.user.tag}) 提交了公會成員申請，請幹部進行審核。`)
                                 .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }))
                                 .addFields(
+                                    { name: '👾 Discord 帳號', value: `\`${interaction.user.tag}\``, inline: true },
                                     { name: '👤 遊戲名稱', value: `\`${name}\``, inline: true },
                                     { name: '📈 等級', value: `\`LV. ${level}\``, inline: true },
                                     { name: '⚔️ 職業', value: `\`${classesForDisplay}\``, inline: true }, 
-                                    { name: '🔑 遊戲代碼', value: `\`${code}\``, inline: true }
+                                    { name: '🔑 遊戲代碼', value: `\`${code}\``, inline: true },
+                                    { name: '🤝 引薦人', value: `${systemDetectedReferrer}`, inline: true }
                                 )
                                 .setColor('#FFD700')
                                 .setTimestamp()
@@ -931,7 +976,6 @@ client.on('interactionCreate', async interaction => {
                 try {
                     const dmChannel = await interaction.user.createDM();
                     await interaction.editReply({ content: `✅ 第一步完成！\n\n📸 **請麻煩去查看我給你的私訊**，並直接把你的遊戲截圖傳送給我，才能完成最後的申請步驟喔！🏃‍♂️💨` });
-                    
                     await dmChannel.send(`👋 嗨嗨！你剛剛填寫了 ENDLESS 的入會申請，距離加入我們只差最後一步啦！🏃‍♂️💨\n\n📸 **請在 5 分鐘內，直接將你的「角色資料截圖」傳送在這個聊天室喔！**\n*(這張帥氣的截圖會附在你的申請單上，讓公會好好認識你！)*`);
 
                     const filter = m => m.author.id === interaction.user.id;
@@ -1039,7 +1083,6 @@ client.on('interactionCreate', async interaction => {
             }
         }
     } catch (globalError) {
-        // 🌟 新增：忽略 DiscordAPIError[10062] (機器人重啟時，玩家送出的互動超時)
         if (globalError.code === 10062) return; 
         console.error("🚨 互動處理發生未預期錯誤：", globalError);
     }
@@ -1055,6 +1098,8 @@ client.on('guildMemberRemove', async member => {
             await db.collection('members').doc(member.id).delete();
             console.log(`🧹 偵測到成員 ${member.user.tag} 離開伺服器，已自動清除其 Firebase 紀錄。`);
         }
+        // 清除尚未審核但已退出的邀請追蹤資料
+        await db.collection('inviteTracking').doc(member.id).delete().catch(()=>{});
     } catch (error) { console.error("❌ 清除離開成員資料失敗：", error); }
 });
 
@@ -1062,7 +1107,6 @@ client.on('guildMemberRemove', async member => {
 // 🚀 6️⃣ 啟動機器人
 // ==========================================
 const safeToken = process.env.DISCORD_TOKEN ? process.env.DISCORD_TOKEN.trim() : null;
-
 if (!safeToken) {
     console.error("❌ [錯誤] 系統抓不到 DISCORD_TOKEN！");
 } else {
