@@ -721,7 +721,7 @@ client.on('interactionCreate', async interaction => {
                     .setCustomId(`select_class_${isMember ? 'member' : 'friend'}`)
                     .setPlaceholder('請選擇您的遊戲職業 (可多選)...')
                     .setMinValues(1)
-                    .setMaxValues(4)
+                    .setMaxValues(12) // 🌟 這裡已修改為 12
                     .addOptions(classOptionsList);
                 return interaction.reply({ 
                     content: isMember ? '您選擇了「公會成員」，請選擇您的職業 (可多選)：' : '您選擇了「親友團」，請選擇您的職業 (可多選)：', 
