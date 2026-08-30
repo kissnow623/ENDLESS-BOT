@@ -15,9 +15,15 @@ try {
     process.exit(1); 
 }
 
-if (!admin.apps.length) {
+// 🔥 修正區塊：使用 try-catch 取代原本的 admin.apps.length 檢查
+try {
     admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
     console.log("✅ Firebase Firestore 連線成功！");
+} catch (error) {
+    // 攔截重複初始化的警告，其他錯誤則報錯
+    if (error.code !== 'app/duplicate-app') {
+        console.error("❌ Firebase 初始化失敗：", error);
+    }
 }
 
 const db = admin.firestore();
