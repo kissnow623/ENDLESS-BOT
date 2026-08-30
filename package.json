@@ -1,15 +1,15 @@
 {
   "name": "artale-endless-bot",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "ENDLESS Guild Management Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.14.1",
+    "discord.js": "^14.27.0",
     "dotenv": "^16.4.5",
-    "express": "^4.18.3",
-    "firebase-admin": "^12.0.0"
+    "express": "^5.2.1",
+    "firebase-admin": "^14.3.0"
   }
 }
