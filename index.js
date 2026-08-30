@@ -8,12 +8,13 @@ dns.setDefaultResultOrder('ipv4first');
 
 const express = require('express');
 const admin = require('firebase-admin');
+
 const { 
     Client, GatewayIntentBits, Partials, ActionRowBuilder, 
     ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, 
     TextInputStyle, EmbedBuilder, REST, Routes,
     StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
-    PermissionFlagsBits, ApplicationCommandOptionType,
+    PermissionFlagsBits, PermissionsBitField, ApplicationCommandOptionType,
     MessageFlags 
 } = require('discord.js');
 
