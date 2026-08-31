@@ -117,7 +117,7 @@ async function handleCommand(interaction, client) {
     // ------------------------------------------
     // 👑 【迴響預約系統指令區】
     // ------------------------------------------
-    if (['預約', '我的紀錄', '接單統計', '查詢預約', '刷新看板', '註冊迴響專員', '指定迴響專員', '刪除迴響專員', '清理訊息', '設定公開看板', '設定管理看板', '迴響管理區', '價格', '迴響鬧鐘', '優惠設定', '系統狀態', '營運設定', '玩家管理', '刪除訂單'].includes(cmd)) {
+    if (['預約', '我的紀錄', '接單統計', '查詢預約', '刷新看板', '註冊迴響專員', '指定迴響專員', '刪除迴響專員', '清理訊息', '設定公開看板', '設定管理看板', '迴響管理區', '價格', '迴響鬧鐘', '優惠設定', '同時段最大接單數', '系統狀態', '營運設定', '玩家管理', '刪除訂單'].includes(cmd)) {
         
         if (cmd === '預約') {
             const location = interaction.options.getString('地點');
@@ -250,7 +250,7 @@ async function handleCommand(interaction, client) {
             if (!hasAdminPerm) return interaction.editReply({ content: '❌ 權限不足' });
             const sub = interaction.options.getSubcommand();
             const docRef = db.collection('settings').doc('operationMode');
-            let opData = appSettings['operationMode'] || { autoApprove: false, autoRefreshBoard: false, frozenSlots: [] };
+            let opData = appSettings['operationMode'] || { autoApprove: false, autoRefreshBoard: false, frozenSlots: [], maxConcurrentOrders: 1 };
 
             if (sub === '自動審核' || sub === '自動更新看板') {
                 const state = interaction.options.getString('狀態') === 'true';
@@ -265,8 +265,16 @@ async function handleCommand(interaction, client) {
             } else if (sub === '清空凍結時段') {
                 opData.frozenSlots = []; await docRef.set(opData, { merge: true }); addDbStat('write'); return interaction.editReply(`✅ 已清空所有凍結時段。`);
             } else if (sub === '查看目前設定') {
-                return interaction.editReply({ embeds: [new EmbedBuilder().setColor(0x0099FF).setTitle('⚙️ 營運模式設定').setDescription(`**自動審核狀態**：${opData.autoApprove ? '🟢 開啟' : '🔴 關閉'}\n**自動更新看板**：${opData.autoRefreshBoard ? '🟢 開啟' : '🔴 關閉'}\n\n**目前凍結時段**：共 ${(opData.frozenSlots||[]).length} 組`)] });
+                const max = opData.maxConcurrentOrders || 1;
+                return interaction.editReply({ embeds: [new EmbedBuilder().setColor(0x0099FF).setTitle('⚙️ 營運模式設定').setDescription(`**自動審核狀態**：${opData.autoApprove ? '🟢 開啟' : '🔴 關閉'}\n**自動更新看板**：${opData.autoRefreshBoard ? '🟢 開啟' : '🔴 關閉'}\n**同時段最大單量**：${max} 單\n\n**目前凍結時段**：共 ${(opData.frozenSlots||[]).length} 組`)] });
             }
+        }
+        else if (cmd === '同時段最大接單數') {
+            if (!hasAdminPerm) return interaction.editReply({ content: '❌ 權限不足' });
+            const limit = interaction.options.getInteger('數量');
+            await db.collection('settings').doc('operationMode').set({ maxConcurrentOrders: limit }, { merge: true });
+            addDbStat('write');
+            return interaction.editReply({ content: `✅ 設定成功！目前系統同一個時段最多允許 **${limit}** 張訂單並行。` });
         }
         else if (cmd === '清理訊息') {
             if (!hasAdminPerm) return interaction.editReply({ content: '❌ 權限不足' });
@@ -301,7 +309,7 @@ async function handleCommand(interaction, client) {
             else { await db.collection('settings').doc('vipRules').set({ [interaction.options.getString('地點')]: { buy: interaction.options.getInteger('滿幾次'), free: interaction.options.getInteger('送幾次') } }, { merge: true }); }
             
             addDbStat('write'); 
-            updateBoard(client); // 🌟 設定更新後立刻重整看板
+            updateBoard(client); 
             return interaction.editReply({ content: '✅ 設定成功！已同步刷新所有看板。' });
         }
         else if (cmd === '我的紀錄') {
