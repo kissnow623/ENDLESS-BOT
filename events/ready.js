@@ -1,3 +1,4 @@
+// events/ready.js
 const { PermissionFlagsBits, ApplicationCommandOptionType } = require('discord.js');
 const { config } = require('../config/constants');
 const { checkAndThankBooster } = require('../utils/guildHelpers');
@@ -61,17 +62,18 @@ module.exports = {
             { name: '查詢目前公會成員', description: '查詢公會成員列表與總人數 (僅限幹部)', default_member_permissions: adminPerms },
             { name: '查詢目前親友團', description: '查詢親友團成員列表與總人數 (僅限幹部)', default_member_permissions: adminPerms },
             { name: '同步更名', description: '批次同步資料庫中所有成員的最新暱稱格式與符號 (僅限幹部)', default_member_permissions: adminPerms },
-            { name: '檢查補發感謝', description: '【幹部專屬】掃描伺服器所有加成者，自動為錯過的乾爹乾媽補發感謝卡！', default_member_permissions: adminPerms },
-            { name: '測試感謝卡', description: '【幹部專屬】發送一張私密測試用的加成感謝卡 (僅自己可見)', default_member_permissions: adminPerms },
-            { name: '重播感謝卡', description: '【幹部專屬】強制公開重播指定玩家的加成感謝卡', default_member_permissions: adminPerms, options: [{ name: '玩家', description: '請選擇您要重新感謝的加成者', type: ApplicationCommandOptionType.User, required: true }] },
             { name: '清除資料', description: '清除指定成員的資料庫紀錄與身分組 (僅限幹部)', default_member_permissions: adminPerms, options: [{ name: '目標', description: '請選擇要重置資料的成員', type: ApplicationCommandOptionType.User, required: true }] },
             { name: '清除訊息', description: '快速清除當前頻道指定數量的訊息 (僅限幹部)', default_member_permissions: adminPerms, options: [{ name: '數量', description: '請輸入要清除的訊息數量 (1 到 100)', type: ApplicationCommandOptionType.Integer, required: true, min_value: 1, max_value: 100 }] },
             { name: '星光紅毯設定', description: '開啟或關閉專屬的進場浮誇歡迎詞 (僅限加成者)', options: [{ name: '狀態', type: 3, description: '選擇開啟或關閉', required: true, choices: [{name:'開啟', value:'on'}, {name:'關閉', value:'off'}] }] }
         ];
 
         try {
-            await client.application.commands.set([...echoCommands, ...guildCommands]);
-            console.log('✅ 所有指令 (公會 & 迴響) 全域註冊完成！');
+            await client.application.commands.set([]); 
+            const guild = client.guilds.cache.get(config.guildId);
+            if (guild) {
+                await guild.commands.set([...echoCommands, ...guildCommands]);
+                console.log('✅ 所有指令已專屬註冊至 ENDLESS 伺服器，並清空全域重複指令！');
+            }
         } catch (error) { 
             console.error('❌ 指令註冊失敗：', error); 
         }
