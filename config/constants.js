@@ -1,7 +1,7 @@
 // config/constants.js
 
-// 🌟 修改：將陣列留空，代表「允許所有伺服器使用」，不再阻擋測試！
-const ALLOWED_GUILDS = []; 
+// 🌟 已設定專屬白名單：只有此伺服器 (1539475243733622794) 可以使用機器人！
+const ALLOWED_GUILDS = ['1539475243733622794']; 
 
 const AGENT_ROLE_MAP = {
     'default': '1541411576228093963', 
