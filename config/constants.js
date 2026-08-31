@@ -1,4 +1,5 @@
 // config/constants.js
+const { StringSelectMenuOptionBuilder } = require('discord.js');
 
 // 🌟 已設定專屬白名單：只有此伺服器 (1539475243733622794) 可以使用機器人！
 const ALLOWED_GUILDS = ['1539475243733622794']; 
@@ -6,6 +7,11 @@ const ALLOWED_GUILDS = ['1539475243733622794'];
 const AGENT_ROLE_MAP = {
     'default': '1541411576228093963', 
 };
+
+// 🌟 補回遺漏的函數：取得專員身分組
+function getAgentRoleId(guildId) {
+    return AGENT_ROLE_MAP[guildId] || AGENT_ROLE_MAP['default'];
+}
 
 const ADMIN_ROLES = [
     '1539508532846526494', // 幹部身分組 1
@@ -29,6 +35,11 @@ const config = {
         }
     }
 };
+
+// 🌟 補回遺漏的：動態產生職業選單
+const classOptionsList = Object.keys(config.roles.classes).map(className => 
+    new StringSelectMenuOptionBuilder().setLabel(className).setValue(className)
+);
 
 const welcomeMessages = [
     (userId) => `🎉 掌聲加尖叫！讓我們熱烈歡迎 <@${userId}> 閃亮登場！✨ 大家快來跟他打聲招呼，準備一起展開在 ENDLESS 的大冒險啦！🚀`,
