@@ -2,7 +2,7 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder, PermissionsBitField, MessageFlags } = require('discord.js');
 const { db, addDbStat, getCache } = require('../utils/firebase');
 const { config, getAgentRoleId } = require('../config/constants');
-const { checkAndThankBooster, generateMemberLeaderboard, generateFriendLeaderboard, updateNickname } = require('../utils/guildHelpers');
+const { generateMemberLeaderboard, generateFriendLeaderboard, updateNickname } = require('../utils/guildHelpers');
 const { getTaiwanTime, updateBoard, checkIsAgent, buildAgentStatMessage, generateScheduleEmbed, broadcastToManagementAreas } = require('../utils/echoHelpers');
 
 async function handleCommand(interaction, client) {
@@ -16,7 +16,7 @@ async function handleCommand(interaction, client) {
     // ------------------------------------------
     // 💎 【公會系統指令區】
     // ------------------------------------------
-    if (['解鎖權限', '發布小指南', '查詢目前公會成員', '查詢目前親友團', '同步更名', '檢查補發感謝', '測試感謝卡', '重播感謝卡', '清除資料', '清除訊息', '星光紅毯設定'].includes(cmd)) {
+    if (['解鎖權限', '發布小指南', '查詢目前公會成員', '查詢目前親友團', '同步更名', '清除資料', '清除訊息', '星光紅毯設定'].includes(cmd)) {
         
         if (cmd === '星光紅毯設定') {
             await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -31,45 +31,6 @@ async function handleCommand(interaction, client) {
         }
 
         if (!isOwner && !hasAdminRole && !hasAdminPerm) return interaction.reply({ content: '❌ 很抱歉，此指令僅限幹部使用。', flags: MessageFlags.Ephemeral });
-
-        if (cmd === '測試感謝卡') {
-            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-            const boostChannel = await interaction.guild.channels.fetch(config.channels.boostThanks).catch(() => null);
-            await checkAndThankBooster(interaction.member, boostChannel, 'test', interaction);
-            return;
-        }
-
-        if (cmd === '重播感謝卡') {
-            await interaction.deferReply({ flags: MessageFlags.Ephemeral }); 
-            const targetUser = interaction.options.getUser('玩家');
-            const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
-            if (!targetMember) return interaction.editReply('❌ 找不到該成員，他可能已經離開伺服器了。');
-            if (!targetMember.premiumSince) return interaction.editReply(`❌ <@${targetUser.id}> 目前**不是**伺服器加成者喔！無法發送感謝卡。`);
-            const boostChannel = await interaction.guild.channels.fetch(config.channels.boostThanks).catch(() => null);
-            if (!boostChannel) return interaction.editReply('❌ 找不到感謝卡發佈頻道，請檢查設定。');
-            const success = await checkAndThankBooster(targetMember, boostChannel, 'replay', interaction);
-            if (success) return interaction.editReply(`✅ **大成功！** 已經在 <#${config.channels.boostThanks}> 重新為 <@${targetUser.id}> 舉辦盛大的感謝典禮囉！🎉`);
-            return interaction.editReply('❌ 重播失敗，發生了未知的錯誤。');
-        }
-
-        if (cmd === '檢查補發感謝') {
-            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-            await interaction.editReply('⏳ 正在掃描伺服器加成者名單，請稍候...');
-            try {
-                const boostChannel = await interaction.guild.channels.fetch(config.channels.boostThanks).catch(() => null);
-                if (!boostChannel) return interaction.editReply('❌ 找不到感謝卡發布頻道！');
-                let count = 0;
-                const members = await interaction.guild.members.fetch();
-                for (const [id, member] of members) {
-                    if (member.premiumSince) {
-                        const wasThanked = await checkAndThankBooster(member, boostChannel, 'normal');
-                        if (wasThanked) count++;
-                        await new Promise(resolve => setTimeout(resolve, 300));
-                    }
-                }
-                return interaction.editReply(`✅ **掃描補發完畢！**\n✨ 本次總共為 **${count}** 位錯過的乾爹乾媽補發了精美感謝卡片！🎉`);
-            } catch (err) { return interaction.editReply('❌ 執行掃描時發生錯誤。'); }
-        }
 
         if (cmd === '解鎖權限') {
             const row = new ActionRowBuilder().addComponents(
@@ -191,47 +152,35 @@ async function handleCommand(interaction, client) {
         }
         else if (cmd === '註冊迴響專員') {
             const userRef = db.collection('users').doc(interaction.user.id);
-            const userDoc = await userRef.get();
-            addDbStat('read');
+            const userDoc = await userRef.get(); addDbStat('read');
             let ud = userDoc.exists ? userDoc.data() : { violationPoints: 0, bannedUntil: null };
             
-            if (ud.agentStatus === 'rejected' || ud.agentStatus === 'removed') return interaction.editReply('❌ 您的申請先前已被拒絕或移除，無法重複送出。若有疑問請聯繫管理員！');
-            if (ud.isAgent) return interaction.editReply('✅ 您已經是認證的迴響專員囉！可以開始接單服務了。');
-            if (ud.agentStatus === 'pending') return interaction.editReply('⏳ 您的專員申請正在審核中，請耐心等候管理員通知！');
+            if (ud.agentStatus === 'rejected' || ud.agentStatus === 'removed') return interaction.editReply('❌ 您的申請先前已被拒絕或移除，無法重複送出。');
+            if (ud.isAgent) return interaction.editReply('✅ 您已經是認證的迴響專員囉！');
+            if (ud.agentStatus === 'pending') return interaction.editReply('⏳ 您的專員申請正在審核中！');
 
-            ud.agentStatus = 'pending';
-            await userRef.set(ud, { merge: true });
-            addDbStat('write');
+            ud.agentStatus = 'pending'; await userRef.set(ud, { merge: true }); addDbStat('write');
 
             const payload = {
-                embeds: [new EmbedBuilder().setColor(0xFFA500).setTitle('📝 新專員認證申請').setDescription(`玩家 <@${interaction.user.id}> 申請註冊成為 **迴響專員**！\n請審核是否賦予接單權限：`)],
+                embeds: [new EmbedBuilder().setColor(0xFFA500).setTitle('📝 新專員認證申請').setDescription(`玩家 <@${interaction.user.id}> 申請註冊成為 **迴響專員**！`)],
                 components: [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`approveAgent_${interaction.user.id}`).setLabel('✅ 通過認證').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId(`rejectAgent_${interaction.user.id}`).setLabel('❌ 拒絕申請').setStyle(ButtonStyle.Danger))]
             };
             await broadcastToManagementAreas(client, payload);
-            return interaction.editReply('✅ **申請已送出！** 請等待管理員進行審核，審核結果將會私訊通知您。');
+            return interaction.editReply('✅ **申請已送出！** 請等待管理員進行審核。');
         }
         else if (cmd === '指定迴響專員') {
             if (!hasAdminPerm) return interaction.editReply({ content: '❌ 權限不足' });
             const targetUser = interaction.options.getUser('玩家');
-            await db.collection('users').doc(targetUser.id).set({ isAgent: true, agentStatus: 'approved' }, { merge: true });
-            addDbStat('write');
-            try {
-                const member = await interaction.guild.members.fetch(targetUser.id);
-                if (member) await member.roles.add(getAgentRoleId(interaction.guildId));
-            } catch (e) {}
-            try { await targetUser.send('🎉 **恭喜！管理員已直接指定您為【迴響專員】囉！**\n您可以開始至頻道接單了！'); } catch (e) {}
-            return interaction.editReply(`✅ 已成功指定 <@${targetUser.id}> 為迴響專員，並已自動配發身分組。`);
+            await db.collection('users').doc(targetUser.id).set({ isAgent: true, agentStatus: 'approved' }, { merge: true }); addDbStat('write');
+            try { const member = await interaction.guild.members.fetch(targetUser.id); if (member) await member.roles.add(getAgentRoleId(interaction.guildId)); } catch (e) {}
+            return interaction.editReply(`✅ 已成功指定 <@${targetUser.id}> 為迴響專員。`);
         }
         else if (cmd === '刪除迴響專員') {
             if (!hasAdminPerm) return interaction.editReply({ content: '❌ 權限不足' });
             const targetUser = interaction.options.getUser('玩家');
-            await db.collection('users').doc(targetUser.id).set({ isAgent: false, agentStatus: 'removed' }, { merge: true });
-            addDbStat('write');
-            try {
-                const member = await interaction.guild.members.fetch(targetUser.id);
-                if (member) await member.roles.remove(getAgentRoleId(interaction.guildId));
-            } catch (e) {}
-            return interaction.editReply(`✅ 已成功移除 <@${targetUser.id}> 的迴響專員身分，並已自動撤銷身分組。`);
+            await db.collection('users').doc(targetUser.id).set({ isAgent: false, agentStatus: 'removed' }, { merge: true }); addDbStat('write');
+            try { const member = await interaction.guild.members.fetch(targetUser.id); if (member) await member.roles.remove(getAgentRoleId(interaction.guildId)); } catch (e) {}
+            return interaction.editReply(`✅ 已移除 <@${targetUser.id}> 的迴響專員身分。`);
         }
         else if (cmd === '刪除訂單') {
             if (!hasAdminPerm) return interaction.editReply({ content: '❌ 權限不足' });
@@ -242,8 +191,7 @@ async function handleCommand(interaction, client) {
                 const docId = targetId.trim();
                 const targetOrder = allReservations.find(r => r.id === docId);
                 if (!targetOrder) return interaction.editReply({ content: `❌ 找不到 ID 為 \`${docId}\` 的訂單。` });
-                await db.collection('reservations').doc(docId).delete();
-                addDbStat('write');
+                await db.collection('reservations').doc(docId).delete(); addDbStat('write');
                 if (targetOrder.ticketMsgs) {
                     for (const m of targetOrder.ticketMsgs) {
                         try {
@@ -253,7 +201,7 @@ async function handleCommand(interaction, client) {
                     }
                 }
                 setTimeout(() => { updateBoard(client); }, 1500); 
-                return interaction.editReply({ content: `✅ 已成功從資料庫徹底刪除訂單 \`${docId}\`！` });
+                return interaction.editReply({ content: `✅ 訂單徹底刪除成功！` });
             }
 
             let userOrders = targetUser ? allReservations.filter(r => r.discordId === targetUser.id).sort((a, b) => b.timestamp - a.timestamp).slice(0, 25) : allReservations.sort((a, b) => b.timestamp - a.timestamp).slice(0, 25);
@@ -269,7 +217,7 @@ async function handleCommand(interaction, client) {
                 return { label: `[${o.date}] ${o.location} - 玩家:${pName}`, description: `狀態: ${statusTw} | ID: ${o.id}`, value: o.id };
             });
             const row = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('select_delete_order').setPlaceholder('請選擇要從資料庫徹底刪除的訂單').addOptions(options));
-            return interaction.editReply({ content: `${displayMsg}\n*(注意：刪除後將無法恢復，並會自動修正報表統計)*`, components: [row] });
+            return interaction.editReply({ content: `${displayMsg}`, components: [row] });
         }
         else if (cmd === '玩家管理') {
             if (!hasAdminPerm) return interaction.editReply({ content: '❌ 權限不足' });
@@ -351,7 +299,10 @@ async function handleCommand(interaction, client) {
             if (cmd === '價格') { await db.collection('settings').doc('prices').set({ [interaction.options.getString('地點')]: interaction.options.getInteger('價格') }, { merge: true }); }
             else if (cmd === '迴響鬧鐘') { await db.collection('settings').doc('alarm').set({ leadTime: interaction.options.getInteger('分鐘') }, { merge: true }); }
             else { await db.collection('settings').doc('vipRules').set({ [interaction.options.getString('地點')]: { buy: interaction.options.getInteger('滿幾次'), free: interaction.options.getInteger('送幾次') } }, { merge: true }); }
-            addDbStat('write'); return interaction.editReply({ content: '✅ 設定成功！' });
+            
+            addDbStat('write'); 
+            updateBoard(client); // 🌟 設定更新後立刻重整看板
+            return interaction.editReply({ content: '✅ 設定成功！已同步刷新所有看板。' });
         }
         else if (cmd === '我的紀錄') {
             const tw = getTaiwanTime(); const currentMonthPrefix = `${tw.yyyy}-${tw.mm}`;
