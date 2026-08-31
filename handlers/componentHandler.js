@@ -834,7 +834,9 @@ async function handleComponent(interaction, client) {
                     discordId: interaction.user.id, 
                     discordName: interaction.user.displayName || interaction.user.username,
                     gameId, date: slot.tDate, time: slot.tTime, location, channel, notes,
-                    timestamp: slot.targetTimeMs, reminded: false, takenBy: null, postChecked: false, userDmMsgId: null, buttonsRemoved: false,
+                    timestamp: slot.targetTimeMs, 
+                    createdAt: Date.now(), // 🌟🌟 新增：這行讓系統可以抓到最新動態
+                    reminded: false, takenBy: null, postChecked: false, userDmMsgId: null, buttonsRemoved: false,
                     status: autoApprove ? 'approved' : 'pending',
                     reviewer: autoApprove ? '系統自動' : null
                 };
