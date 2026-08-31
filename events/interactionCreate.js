@@ -1,5 +1,5 @@
 // events/interactionCreate.js
-const { ALLOWED_GUILDS } = require('../config/constants');
+const { config } = require('../config/constants');
 const { handleCommand } = require('../handlers/commandHandler');
 const { handleComponent } = require('../handlers/componentHandler');
 
@@ -7,10 +7,10 @@ module.exports = {
     name: 'interactionCreate',
     async execute(interaction, client) {
         try {
-            // [防護] 只允許在特定伺服器運作 
-            if (interaction.guildId && ALLOWED_GUILDS.length > 0 && !ALLOWED_GUILDS.includes(interaction.guildId)) {
+            // [防護] 絕對防呆機制：只允許在你的專屬伺服器運作 (直接比對 config 裡面的 guildId)
+            if (interaction.guildId && interaction.guildId !== config.guildId) {
                 if (interaction.isRepliable()) {
-                    return interaction.reply({ content: '❌ 此伺服器尚未開通機器人服務。', ephemeral: true }).catch(() => {});
+                    return interaction.reply({ content: '❌ 此伺服器尚未開通迴響機器人服務。', ephemeral: true }).catch(() => {});
                 }
                 return;
             }
