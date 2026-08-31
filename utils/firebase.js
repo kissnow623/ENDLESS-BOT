@@ -1,5 +1,7 @@
 // utils/firebase.js
-const admin = require('firebase-admin');
+// 🌟 修正：改用 Firebase 最新版的模組化引入方式
+const { initializeApp, cert, getApps } = require('firebase-admin/app');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 
 let serviceAccount;
 try {
@@ -15,18 +17,25 @@ try {
     process.exit(1); 
 }
 
-// 🔥 修正區塊：使用 try-catch 取代原本的 admin.apps.length 檢查
+// 🔥 修正：使用最新 getApps() 來防止重複初始化，並使用 cert() 憑證
 try {
-    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-    console.log("✅ Firebase Firestore 連線成功！");
-} catch (error) {
-    // 攔截重複初始化的警告，其他錯誤則報錯
-    if (error.code !== 'app/duplicate-app') {
-        console.error("❌ Firebase 初始化失敗：", error);
+    if (getApps().length === 0) {
+        initializeApp({ credential: cert(serviceAccount) });
+        console.log("✅ Firebase Firestore 連線成功！");
     }
+} catch (error) {
+    console.error("❌ Firebase 初始化失敗：", error);
 }
 
-const db = admin.firestore();
+// 取得資料庫實體
+const db = getFirestore();
+
+// 💡 巧思：製作一個相容舊版語法的 admin 物件，這樣其他檔案就不需要跟著大改了！
+const adminCompat = {
+    firestore: {
+        FieldValue: FieldValue
+    }
+};
 
 // --- 讀寫計數器 ---
 let dbStats = { reads: 0, writes: 0, resetDay: new Date(Date.now() + 8 * 3600000).getUTCDate() };
@@ -61,7 +70,7 @@ db.collection('settings').onSnapshot(snapshot => {
 
 module.exports = {
     db,
-    admin,
+    admin: adminCompat, // 輸出相容套件，讓其他檔案的 admin.firestore.FieldValue 繼續生效
     addDbStat,
     getDbStats: () => dbStats,
     getCache: () => cache
