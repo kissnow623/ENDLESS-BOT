@@ -13,9 +13,6 @@ async function handleComponent(interaction, client) {
     // ===================================
     if (interaction.isButton()) {
         
-        // ------------------------------------------
-        // 💎 【公會系統按鈕】
-        // ------------------------------------------
         if (interaction.customId === 'btn_member' || interaction.customId === 'btn_friend') {
             const isMember = interaction.customId === 'btn_member';
             const selectMenu = new StringSelectMenuBuilder()
@@ -31,22 +28,15 @@ async function handleComponent(interaction, client) {
             });
         }
 
-        // ⚠️ 處理兩邊可能衝突的 approve_ 與 reject_ 前綴
         if (interaction.customId.startsWith('approve_') || interaction.customId.startsWith('reject_')) {
             const parts = interaction.customId.split('_');
             const action = parts[0]; 
 
-            // 如果 parts 長度 >= 3，代表是公會的 (approve_userId_classes)
-            // 如果 parts[1] 全是數字 (Discord ID)，代表是公會的 reject (reject_userId)
             if ( (action === 'approve' && parts.length >= 3) || (action === 'reject' && /^\d+$/.test(parts[1])) ) {
-                
                 const targetUserId = parts[1];
-
-                // 【公會：審核通過】
                 if (action === 'approve') {
                     const targetClassesStr = parts[2]; 
                     const requestedClasses = targetClassesStr.split('-');
-
                     await interaction.deferUpdate(); 
                     
                     try {
@@ -62,13 +52,10 @@ async function handleComponent(interaction, client) {
                         const doc = await docRef.get();
                         
                         let finalClasses = [...requestedClasses];
-
                         await member.roles.remove(config.roles.familyFriend).catch(() => {});
 
                         let rolesToAdd = [config.roles.guildMember];
-                        finalClasses.forEach(cls => {
-                            if (config.roles.classes[cls]) rolesToAdd.push(config.roles.classes[cls]);
-                        });
+                        finalClasses.forEach(cls => { if (config.roles.classes[cls]) rolesToAdd.push(config.roles.classes[cls]); });
                         await member.roles.add(rolesToAdd).catch(() => {});
 
                         await docRef.set({
@@ -78,7 +65,6 @@ async function handleComponent(interaction, client) {
                         }, { merge: true });
 
                         await updateNickname(member, gameName, '公會成員', finalClasses);
-
                         const passedMsg = `🎉 **太棒了！狂賀！** 🎉\n你的申請已經正式通過啦！歡迎成為 ENDLESS 大家庭的一份子！🥳\n現在，伺服器裡的所有專屬頻道都已經為你解鎖囉！趕快進去跟大家打個招呼、找人一起練功打王吧！衝呀～～🚀`;
                         await member.send(passedMsg).catch(() => {});
 
@@ -99,7 +85,6 @@ async function handleComponent(interaction, client) {
                         return interaction.followUp({ content: '❌ 處理失敗，請確認機器人權限。', flags: MessageFlags.Ephemeral }); 
                     }
                 } 
-                // 【公會：退回申請】
                 else if (action === 'reject') {
                     const msgId = interaction.message.id; 
                     const reasonSelect = new StringSelectMenuBuilder()
@@ -113,13 +98,10 @@ async function handleComponent(interaction, client) {
                         ]);
                     return interaction.reply({ content: '請選擇要退回該申請的原因：', components: [new ActionRowBuilder().addComponents(reasonSelect)], flags: MessageFlags.Ephemeral });
                 }
-                return; // 公會邏輯處理完畢
+                return;
             }
-        } // end of approve_ & reject_ overlap check
+        }
 
-        // ------------------------------------------
-        // 👑 【迴響系統按鈕區】
-        // ------------------------------------------
         if (interaction.customId === 'btn_refresh_board') {
             await interaction.deferUpdate().catch(() => {}); 
             await updateBoard(client); 
@@ -131,21 +113,18 @@ async function handleComponent(interaction, client) {
             const agentIds = [...new Set(allReservations.filter(r => r.takenBy && (r.status === 'completed' || r.status === 'failed' || r.status === 'free')).map(r => r.takenBy))];
             
             if (interaction.customId.startsWith('agent_nav_')) {
-                const action = parts[2]; 
-                const currentAgentId = parts[3];
+                const action = parts[2]; const currentAgentId = parts[3];
                 let currIdx = agentIds.indexOf(currentAgentId);
                 if (currIdx === -1) currIdx = 0; 
                 if (action === 'prev') currIdx = Math.max(0, currIdx - 1);
                 if (action === 'next') currIdx = Math.min(agentIds.length - 1, currIdx + 1);
-                
                 const targetAgentId = agentIds[currIdx];
                 const { embed, components } = buildAgentStatMessage(targetAgentId);
                 return interaction.editReply({ embeds: [embed], components });
             }
             
             if (interaction.customId.startsWith('agent_details_')) {
-                const agentId = parts[2];
-                const page = parseInt(parts[3]);
+                const agentId = parts[2]; const page = parseInt(parts[3]);
                 const { embed, components } = buildAgentDetailsMessage(agentId, page);
                 return interaction.editReply({ embeds: [embed], components });
             }
@@ -155,7 +134,6 @@ async function handleComponent(interaction, client) {
             await interaction.deferUpdate().catch(() => {});
             const targetPage = parseInt(interaction.customId.split('_')[3]);
             const { embed, totalPages, currentPage } = generateScheduleEmbed(allReservations, true, targetPage, true);
-            
             const navRow = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`page_nav_prev_${currentPage - 1}`).setLabel('◀ 上一頁').setStyle(ButtonStyle.Secondary).setDisabled(currentPage <= 1),
                 new ButtonBuilder().setCustomId(`page_nav_next_${currentPage + 1}`).setLabel('下一頁 ▶').setStyle(ButtonStyle.Secondary).setDisabled(currentPage >= totalPages)
@@ -169,7 +147,6 @@ async function handleComponent(interaction, client) {
             if (userDoc.exists && userDoc.data().bannedUntil > Date.now()) {
                 return interaction.reply({ content: `💡 **溫馨提醒**：您近期「臨時調整」達上限，權限暫停中喔！`, ephemeral: true });
             }
-            
             const row = new ActionRowBuilder().addComponents(
                 new StringSelectMenuBuilder().setCustomId('select_location').setPlaceholder('請選擇要預約的地點')
                 .addOptions([ { label: '闇黑龍王', value: '闇黑龍王' }, { label: '艾畢奈亞', value: '艾畢奈亞' }, { label: '道館', value: '道館' }, { label: '其他', value: '其他' } ])
@@ -177,49 +154,32 @@ async function handleComponent(interaction, client) {
             await interaction.reply({ content: '👇 **請選擇您要預約的地點：**', components: [row], ephemeral: true });
         }
 
-        // 王團訂單按鈕 (包含 approve, reject, edit, cancel, takeOrder 等)
         else {
             const parts = interaction.customId.split('_');
-            const action = parts[0];
-            const docId = parts[1];
+            const action = parts[0]; const docId = parts[1];
 
-            if (!docId) return; // 避免未知的按鈕
+            if (!docId) return; 
 
             if (action === 'approveAgent') {
                 if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) return interaction.reply({ content: '❌ 權限不足', ephemeral: true });
-                await db.collection('users').doc(docId).set({ isAgent: true, agentStatus: 'approved' }, { merge: true });
-                addDbStat('write');
+                await db.collection('users').doc(docId).set({ isAgent: true, agentStatus: 'approved' }, { merge: true }); addDbStat('write');
                 await interaction.message.edit({ embeds: [new EmbedBuilder().setColor(0x00FF00).setTitle('✅ 專員申請已通過').setDescription(`<@${docId}> 已正式成為認證專員 (審核者：<@${interaction.user.id}>)`)], components: [] });
-                
-                try {
-                    const member = await interaction.guild.members.fetch(docId);
-                    const roleId = getAgentRoleId(interaction.guildId);
-                    if (member && roleId) await member.roles.add(roleId);
-                } catch (e) { }
-
-                try {
-                    const targetUser = await client.users.fetch(docId);
-                    await targetUser.send('🎉 **恭喜！管理員已通過您的申請，您現在正式成為【迴響專員】囉！**\n您可以開始至頻道接單了！');
-                } catch(e) {}
+                try { const member = await interaction.guild.members.fetch(docId); const roleId = getAgentRoleId(interaction.guildId); if (member && roleId) await member.roles.add(roleId); } catch (e) { }
+                try { const targetUser = await client.users.fetch(docId); await targetUser.send('🎉 **恭喜！管理員已通過您的申請，您現在正式成為【迴響專員】囉！**\n您可以開始至頻道接單了！'); } catch(e) {}
                 return interaction.reply({ content: '✅ 審核完成，已配發身分組。', ephemeral: true });
             }
 
             if (action === 'rejectAgent') {
                 if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) return interaction.reply({ content: '❌ 權限不足', ephemeral: true });
-                await db.collection('users').doc(docId).set({ isAgent: false, agentStatus: 'rejected' }, { merge: true });
-                addDbStat('write');
+                await db.collection('users').doc(docId).set({ isAgent: false, agentStatus: 'rejected' }, { merge: true }); addDbStat('write');
                 await interaction.message.edit({ embeds: [new EmbedBuilder().setColor(0xFF0000).setTitle('❌ 專員申請已拒絕').setDescription(`<@${docId}> 的申請已被拒絕 (審核者：<@${interaction.user.id}>)`)], components: [] });
-                try {
-                    const targetUser = await client.users.fetch(docId);
-                    await targetUser.send('🚫 **抱歉，管理員退回了您的【迴響專員】申請。**');
-                } catch(e) {}
+                try { const targetUser = await client.users.fetch(docId); await targetUser.send('🚫 **抱歉，管理員退回了您的【迴響專員】申請。**'); } catch(e) {}
                 return interaction.reply({ content: '✅ 已拒絕。', ephemeral: true });
             }
 
             if (action === 'edit') {
                 const docRef = db.collection('reservations').doc(docId);
-                const doc = await docRef.get();
-                addDbStat('read');
+                const doc = await docRef.get(); addDbStat('read');
                 if (!doc.exists) return interaction.reply({ content: '❌ 找不到此訂單。', ephemeral: true });
                 const data = doc.data();
                 
@@ -242,7 +202,6 @@ async function handleComponent(interaction, client) {
             if (action === 'reject') {
                 let data = allReservations.find(r => r.id === docId);
                 if (!data || data.status !== 'pending') return interaction.reply({ content: '❌ 訂單已不存在或被處理過囉！', ephemeral: true });
-                
                 const row = new ActionRowBuilder().addComponents(
                     new StringSelectMenuBuilder().setCustomId(`rejectReason_${docId}`).setPlaceholder('請選擇拒絕這筆訂單的原因')
                     .addOptions([
@@ -266,6 +225,7 @@ async function handleComponent(interaction, client) {
                     }
 
                     try {
+                        let finalData = null;
                         await db.runTransaction(async (t) => {
                             const doc = await t.get(docRef);
                             addDbStat('read');
@@ -274,6 +234,7 @@ async function handleComponent(interaction, client) {
                             if (data.takenBy) throw new Error('TAKEN'); 
                             
                             t.update(docRef, { takenBy: interaction.user.id });
+                            finalData = data;
                         });
                         addDbStat('write');
                         
@@ -282,12 +243,28 @@ async function handleComponent(interaction, client) {
                         const data = { id: latestDoc.id, ...latestDoc.data() };
                         const payload = buildTicketPayload(docId, data);
                         await syncManagementMessages(client, data.ticketMsgs, payload.embeds[0], payload.components);
-                        return interaction.followUp({ content: '✅ 成功接單！', ephemeral: true });
+
+                        // 🌟 新增：如果訂單已經是「可結案狀態」，專員接手時自動補發結案私訊！
+                        let extraMsg = '';
+                        if (data.postChecked) {
+                            try {
+                                const adminUser = await client.users.fetch(interaction.user.id);
+                                const row = new ActionRowBuilder().addComponents(
+                                    new ButtonBuilder().setCustomId(`complete_${docId}`).setLabel('⭕ 順利完成').setStyle(ButtonStyle.Success),
+                                    new ButtonBuilder().setCustomId(`free_${docId}`).setLabel('🎁 免單').setStyle(ButtonStyle.Primary),
+                                    new ButtonBuilder().setCustomId(`fail_${docId}`).setLabel('❌ 未完成/取消').setStyle(ButtonStyle.Danger)
+                                );
+                                const displayChannel = data.channel ? data.channel : '-';
+                                await adminUser.send({ embeds: [new EmbedBuilder().setColor(0x8A2BE2).setTitle('⏱️ 訂單結案確認').setDescription(`**玩家**：<@${data.discordId}>\n**地點**：${data.location}\n**頻道**：${displayChannel}\n**預約時間**：\`${data.date} ${data.time}\`\n\n*請問順利完成了嗎？*`)], components: [row] });
+                                await docRef.update({ dmFailed: false }); addDbStat('write');
+                                extraMsg = '\n📩 **已為您補發結案確認私訊！**';
+                            } catch (err) {}
+                        }
+                        
+                        return interaction.followUp({ content: `✅ 成功接單！${extraMsg}`, ephemeral: true });
                         
                     } catch (error) {
-                        if (error.message === 'TAKEN') {
-                            return interaction.followUp({ content: '❌ 慢了一步，已經被其他人接走囉！', ephemeral: true });
-                        }
+                        if (error.message === 'TAKEN') return interaction.followUp({ content: '❌ 慢了一步，已經被其他人接走囉！', ephemeral: true });
                         return interaction.followUp({ content: '❌ 找不到訂單或發生錯誤。', ephemeral: true });
                     }
                 }
@@ -295,15 +272,12 @@ async function handleComponent(interaction, client) {
                 const doc = await docRef.get();
                 addDbStat('read');
                 if (!doc.exists) return interaction.followUp({ content: '❌ 找不到此訂單（可能已被刪除）。', ephemeral: true });
-                let data = doc.data();
-                data.id = doc.id;
+                let data = doc.data(); data.id = doc.id;
 
                 if (action === 'approve') {
                     if (data.status !== 'pending') return interaction.followUp({ content: '❌ 訂單已處理過囉！', ephemeral: true });
-                    data.status = 'approved';
-                    data.reviewer = interaction.user.id;
-                    await docRef.update({ status: data.status, reviewer: data.reviewer });
-                    addDbStat('write');
+                    data.status = 'approved'; data.reviewer = interaction.user.id;
+                    await docRef.update({ status: data.status, reviewer: data.reviewer }); addDbStat('write');
                     
                     const payload = buildTicketPayload(docId, data);
                     await syncManagementMessages(client, data.ticketMsgs, payload.embeds[0], payload.components);
@@ -320,54 +294,40 @@ async function handleComponent(interaction, client) {
 
                 if (action === 'release') {
                     if (data.postChecked) {
-                        return interaction.followUp({ content: '❌ 訂單已經進入結案確認階段，無法釋出轉單，請直接結案！', ephemeral: true });
+                        return interaction.followUp({ content: '❌ 訂單已經進入結案確認階段，無法釋出轉單，請直接結案！(若找不到私訊，請直接在看板點選結案)', ephemeral: true });
                     }
-                    if (data.takenBy !== interaction.user.id) {
-                        return interaction.followUp({ content: '❌ 只有目前的接單專員可以釋出此訂單！', ephemeral: true });
-                    }
+                    if (data.takenBy !== interaction.user.id) return interaction.followUp({ content: '❌ 只有目前的接單專員可以釋出此訂單！', ephemeral: true });
+                    
                     data.takenBy = null;
-                    await docRef.update({ takenBy: null });
-                    addDbStat('write');
+                    await docRef.update({ takenBy: null }); addDbStat('write');
                     
                     const payload = buildTicketPayload(docId, data);
                     const newRefs = await bumpManagementMessages(client, data.ticketMsgs, payload.embeds[0], payload.components);
-                    await docRef.update({ ticketMsgs: newRefs });
-                    addDbStat('write');
+                    await docRef.update({ ticketMsgs: newRefs }); addDbStat('write');
                     return interaction.followUp({ content: '✅ 已成功釋出訂單，等待其他專員接手。', ephemeral: true });
                 }
 
                 if (action === 'complete' || action === 'fail' || action === 'free') {
-                    if (data.status === 'completed' || data.status === 'failed' || data.status === 'free') {
-                        return interaction.followUp({ content: '❌ 已經結案過了！', ephemeral: true });
-                    }
-                    if (data.takenBy && data.takenBy !== interaction.user.id) {
-                        return interaction.followUp({ content: `❌ 只有專員 <@${data.takenBy}> 才能確認結案！`, ephemeral: true });
-                    }
+                    if (data.status === 'completed' || data.status === 'failed' || data.status === 'free') return interaction.followUp({ content: '❌ 已經結案過了！', ephemeral: true });
+                    if (data.takenBy && data.takenBy !== interaction.user.id) return interaction.followUp({ content: `❌ 只有專員 <@${data.takenBy}> 才能確認結案！`, ephemeral: true });
 
-                    if (action === 'complete') data.status = 'completed';
-                    else if (action === 'free') data.status = 'free';
-                    else data.status = 'failed';
-
+                    if (action === 'complete') data.status = 'completed'; else if (action === 'free') data.status = 'free'; else data.status = 'failed';
                     data.closer = interaction.user.id;
                     if (!data.takenBy) data.takenBy = interaction.user.id;
 
-                    await docRef.update({ status: data.status, closer: data.closer, takenBy: data.takenBy });
-                    addDbStat('write');
+                    await docRef.update({ status: data.status, closer: data.closer, takenBy: data.takenBy }); addDbStat('write');
                     
                     const payload = buildTicketPayload(docId, data);
                     await syncManagementMessages(client, data.ticketMsgs, payload.embeds[0], payload.components);
                     try { await interaction.editReply({ components: [] }); } catch(e){}
 
                     if (action === 'complete') {
-                        const blessingEmbed = new EmbedBuilder().setColor(0xFFD700).setTitle('🎊 【訂單圓滿完成】')
-                            .setDescription(`**地點**：${data.location}\n**時間**：${data.date} ${data.time}\n\n感謝您的惠顧！\n祝您這趟王團 **寶物大豐收、掉寶順利** 🍀\n期待下次再為您服務喔～`);
+                        const blessingEmbed = new EmbedBuilder().setColor(0xFFD700).setTitle('🎊 【訂單圓滿完成】').setDescription(`**地點**：${data.location}\n**時間**：${data.date} ${data.time}\n\n感謝您的惠顧！\n祝您這趟王團 **寶物大豐收、掉寶順利** 🍀\n期待下次再為您服務喔～`);
                         await editUserDM(client, data.discordId, data.userDmMsgId, { embeds: [blessingEmbed], components: [] });
                     } else if (action === 'free') {
-                        const freeEmbed = new EmbedBuilder().setColor(0xFFD700).setTitle('🎁 【專員招待！本次免單】')
-                            .setDescription(`**地點**：${data.location}\n**時間**：${data.date} ${data.time}\n\n專員為您標記了本次服務為 **免單招待**！🎉\n祝您武運昌隆，期待下次再見！`);
+                        const freeEmbed = new EmbedBuilder().setColor(0xFFD700).setTitle('🎁 【專員招待！本次免單】').setDescription(`**地點**：${data.location}\n**時間**：${data.date} ${data.time}\n\n專員為您標記了本次服務為 **免單招待**！🎉\n祝您武運昌隆，期待下次再見！`);
                         await editUserDM(client, data.discordId, data.userDmMsgId, { embeds: [freeEmbed], components: [] });
                     }
-
                     updateBoard(client);
                     return;
                 }
@@ -379,8 +339,7 @@ async function handleComponent(interaction, client) {
                     const wasApproved = data.status === 'approved';
                     
                     data.status = 'canceled';
-                    await docRef.update({ status: 'canceled' });
-                    addDbStat('write');
+                    await docRef.update({ status: 'canceled' }); addDbStat('write');
                     
                     const payload = buildTicketPayload(docId, data);
                     await syncManagementMessages(client, data.ticketMsgs, payload.embeds[0], payload.components);
@@ -398,16 +357,13 @@ async function handleComponent(interaction, client) {
             }
         }
 
-    } // end of isButton()
+    }
 
     // ===================================
     // 👉 C. String Select Menus (下拉式選單)
     // ===================================
     else if (interaction.isStringSelectMenu()) {
         
-        // ------------------------------------------
-        // 💎 【公會系統選單】
-        // ------------------------------------------
         if (interaction.customId === 'select_user_action') {
             const action = interaction.values[0];
             
@@ -432,7 +388,6 @@ async function handleComponent(interaction, client) {
                 await interaction.deferReply({ flags: MessageFlags.Ephemeral });
                 const doc = await db.collection('members').doc(interaction.user.id).get();
                 if (!doc.exists) return interaction.editReply('❌ 找不到您的資料，請先申請加入！');
-                
                 const data = doc.data();
                 let classes = data.gameClasses || (data.gameClass ? [data.gameClass] : []);
                 if (classes.length === 0) return interaction.editReply('❌ 您目前沒有登記任何職業！');
@@ -448,8 +403,7 @@ async function handleComponent(interaction, client) {
             await interaction.deferUpdate();
             const classToRemove = interaction.values[0];
             const docRef = db.collection('members').doc(interaction.user.id);
-            const doc = await docRef.get();
-            const data = doc.data();
+            const doc = await docRef.get(); const data = doc.data();
             let classes = data.gameClasses || (data.gameClass ? [data.gameClass] : []);
             
             classes = classes.filter(c => c !== classToRemove);
@@ -464,8 +418,7 @@ async function handleComponent(interaction, client) {
             await interaction.deferUpdate();
             const selectedClass = interaction.values[0];
             const docRef = db.collection('members').doc(interaction.user.id);
-            const doc = await docRef.get();
-            const data = doc.data();
+            const doc = await docRef.get(); const data = doc.data();
             let classes = data.gameClasses || (data.gameClass ? [data.gameClass] : []);
 
             if (classes.includes(selectedClass)) return interaction.editReply({ content: `⚠️ 您已經擁有 **${selectedClass}** 的職業囉！`, components: [] });
@@ -496,9 +449,7 @@ async function handleComponent(interaction, client) {
 
         if (interaction.customId.startsWith('select_reject_reason_')) {
             const parts = interaction.customId.split('_');
-            const targetUserId = parts[3];
-            const msgId = parts[4];
-            const reason = interaction.values[0];
+            const targetUserId = parts[3]; const msgId = parts[4]; const reason = interaction.values[0];
 
             if (reason === 'custom') {
                 const modal = new ModalBuilder().setCustomId(`modal_reject_custom_${targetUserId}_${msgId}`).setTitle('填寫退回原因');
@@ -580,35 +531,26 @@ async function handleComponent(interaction, client) {
             const docId = interaction.values[0];
             const targetOrder = allReservations.find(r => r.id === docId);
             
-            await db.collection('reservations').doc(docId).delete();
-            addDbStat('write');
+            await db.collection('reservations').doc(docId).delete(); addDbStat('write');
             
             if (targetOrder && targetOrder.ticketMsgs) {
                 for (const m of targetOrder.ticketMsgs) {
                     try {
                         const ch = await client.channels.fetch(m.channelId).catch(() => null);
-                        if (ch) {
-                            const msg = await ch.messages.fetch(m.messageId).catch(() => null);
-                            if (msg) await msg.delete().catch(() => null);
-                        }
+                        if (ch) { const msg = await ch.messages.fetch(m.messageId).catch(() => null); if (msg) await msg.delete().catch(() => null); }
                     } catch (e) {}
                 }
             }
-            
             setTimeout(() => { updateBoard(client); }, 1500); 
             return interaction.editReply({ content: `✅ 已成功從資料庫徹底刪除該筆訂單紀錄！`, components: [] });
         }
-
-    } // end of isStringSelectMenu()
+    }
 
     // ===================================
     // 👉 D. Modal Submit (彈出式表單提交)
     // ===================================
     else if (interaction.isModalSubmit()) {
         
-        // ------------------------------------------
-        // 💎 【公會系統表單】
-        // ------------------------------------------
         if (interaction.customId.startsWith('modal_member_')) {
             const selectedClassesStr = interaction.customId.replace('modal_member_', '');
             const classesForDisplay = selectedClassesStr.replace(/-/g, '｜');
@@ -642,10 +584,7 @@ async function handleComponent(interaction, client) {
                             .setFooter({ text: 'ENDLESS 審核系統', iconURL: client.user.displayAvatarURL() });
 
                         const messageOptions = { embeds: [embed] };
-                        if (attachment) {
-                            embed.setImage(`attachment://${attachment.name}`);
-                            messageOptions.files = [attachment];
-                        }
+                        if (attachment) { embed.setImage(`attachment://${attachment.name}`); messageOptions.files = [attachment]; }
                         if (timeoutNote) embed.addFields({ name: '⚠️ 備註', value: '玩家未在 5 分鐘內附上截圖。' });
 
                         const row = new ActionRowBuilder().addComponents(
@@ -671,9 +610,7 @@ async function handleComponent(interaction, client) {
                     if (m.attachments.size > 0) {
                         uploadedAttachment = m.attachments.first();
                         await m.reply(`✅ 完美！收到你的帥氣截圖啦！✨\n你的專屬申請單已經搭乘火箭🚀 完整送達公會審核中心囉！幹部們正在火速為你處理，請稍坐片刻、靜候佳音，我們超期待你的加入！🥰`);
-                    } else {
-                        await m.reply(`✅ 收到指示！已略過截圖步驟，你的申請單已經送出給幹部審核囉！請靜候佳音。`);
-                    }
+                    } else { await m.reply(`✅ 收到指示！已略過截圖步驟，你的申請單已經送出給幹部審核囉！請靜候佳音。`); }
                     await sendToApprovalChannel(uploadedAttachment, false);
                 });
                 collector.on('end', async (collected, reason) => {
@@ -696,9 +633,7 @@ async function handleComponent(interaction, client) {
             await interaction.deferReply({ flags: MessageFlags.Ephemeral }); 
             try {
                 let rolesToAdd = [config.roles.familyFriend];
-                finalClasses.forEach(cls => {
-                    if (config.roles.classes[cls]) rolesToAdd.push(config.roles.classes[cls]);
-                });
+                finalClasses.forEach(cls => { if (config.roles.classes[cls]) rolesToAdd.push(config.roles.classes[cls]); });
                 await interaction.member.roles.add(rolesToAdd);
                 
                 await db.collection('members').doc(interaction.user.id).set({
@@ -707,7 +642,6 @@ async function handleComponent(interaction, client) {
                 }, { merge: true });
                 
                 await updateNickname(interaction.member, nameInput, '親友團', finalClasses);
-                
                 const passedMsg = `🎉 **太棒了！狂賀！** 🎉\n歡迎成為 ENDLESS 大家庭的一份子！🥳\n現在，伺服器裡的所有專屬頻道都已經為你解鎖囉！趕快進去跟大家打個招呼、找人一起練功打王吧！衝呀～～🚀`;
                 await interaction.member.send(passedMsg).catch(() => {});
 
@@ -720,16 +654,12 @@ async function handleComponent(interaction, client) {
                 } catch (err) {}
 
                 return interaction.editReply({ content: `✅ 登記成功！身分組已發放，歡迎加入！` });
-            } catch (error) { 
-                return interaction.editReply({ content: '❌ 處理失敗，請確認機器人身分組階級是否在親友團之上。' }); 
-            }
+            } catch (error) { return interaction.editReply({ content: '❌ 處理失敗，請確認機器人身分組階級是否在親友團之上。' }); }
         }
 
         if (interaction.customId.startsWith('modal_reject_custom_')) {
             const parts = interaction.customId.split('_');
-            const targetUserId = parts[3];
-            const msgId = parts[4];
-            const reason = interaction.fields.getTextInputValue('reject_reason');
+            const targetUserId = parts[3]; const msgId = parts[4]; const reason = interaction.fields.getTextInputValue('reject_reason');
             
             await interaction.deferReply({ flags: MessageFlags.Ephemeral });
             try {
@@ -743,9 +673,7 @@ async function handleComponent(interaction, client) {
                 await originalMsg.edit({ embeds: [updatedEmbed], components: [] });
 
                 return interaction.editReply({ content: `✅ 已完成退回通知。` });
-            } catch (error) { 
-                return interaction.editReply({ content: '❌ 無法發送私訊通知該成員。' }); 
-            }
+            } catch (error) { return interaction.editReply({ content: '❌ 無法發送私訊通知該成員。' }); }
         }
 
         if (interaction.customId === 'modal_update_data') {
@@ -766,11 +694,8 @@ async function handleComponent(interaction, client) {
                 await db.collection('members').doc(interaction.user.id).update(updateData);
                 
                 const newNick = await updateNickname(interaction.member, newName, roleType, classes);
-                
                 return interaction.editReply({ content: `✅ 資料更新成功！您的暱稱已同步更新為：**${newNick}**` });
-            } catch (error) { 
-                return interaction.editReply({ content: '❌ 更新失敗，請稍後再試。' }); 
-            }
+            } catch (error) { return interaction.editReply({ content: '❌ 更新失敗，請稍後再試。' }); }
         }
 
         // ------------------------------------------
@@ -802,6 +727,8 @@ async function handleComponent(interaction, client) {
             const opMode = appSettings['operationMode'] || {};
             const frozenSlots = opMode.frozenSlots || [];
             const autoApprove = opMode.autoApprove || false;
+            // 🌟 核心升級：讀取最大接單上限設定，如果沒有設定預設為 1
+            const maxConcurrent = opMode.maxConcurrentOrders || 1; 
 
             let scheduledSlots = [];
             for (let i = 0; i < times; i++) {
@@ -816,9 +743,10 @@ async function handleComponent(interaction, client) {
                     return interaction.editReply({ content: `❌ **系統凍結時段**：第 ${i+1} 場（${tDate} \`${tTime}\`）為暫不開放預約時段！\n📌 該日暫停時段說明：${frozenMsg}\n請重新選擇首場時間喔！` });
                 }
 
-                const isConflict = allReservations.some(res => res.location === location && Math.abs(targetTimeMs - res.timestamp) < 10 * 60 * 1000 && res.status === 'approved');
-                if (isConflict) {
-                    return interaction.editReply({ content: `❌ **時段衝突**：第 ${i+1} 場（${tTime}）前後10分鐘已有排單，無法完成連續預約。` });
+                // 🌟 核心升級：改用「計算同時段單量」取代原本的「有單就擋」
+                const conflictingOrders = allReservations.filter(res => res.location === location && Math.abs(targetTimeMs - res.timestamp) < 10 * 60 * 1000 && res.status === 'approved');
+                if (conflictingOrders.length >= maxConcurrent) {
+                    return interaction.editReply({ content: `❌ **時段衝突**：第 ${i+1} 場（${tTime}）前後10分鐘已達最大接單上限 (${maxConcurrent}單)，無法完成連續預約。` });
                 }
 
                 scheduledSlots.push({ targetTimeMs, tDate, tTime });
@@ -835,8 +763,8 @@ async function handleComponent(interaction, client) {
                     discordName: interaction.user.displayName || interaction.user.username,
                     gameId, date: slot.tDate, time: slot.tTime, location, channel, notes,
                     timestamp: slot.targetTimeMs, 
-                    createdAt: Date.now(), // 🌟🌟 新增：這行讓系統可以抓到最新動態
-                    reminded: false, takenBy: null, postChecked: false, userDmMsgId: null, buttonsRemoved: false,
+                    createdAt: Date.now(), 
+                    reminded: false, takenBy: null, postChecked: false, userDmMsgId: null, buttonsRemoved: false, dmFailed: false,
                     status: autoApprove ? 'approved' : 'pending',
                     reviewer: autoApprove ? '系統自動' : null
                 };
@@ -867,8 +795,7 @@ async function handleComponent(interaction, client) {
                     
                     try {
                         const dmMsg = await interaction.user.send({ embeds: [dmEmbed], components: [btnRow] });
-                        await docRef.update({ userDmMsgId: dmMsg.id });
-                        addDbStat('write');
+                        await docRef.update({ userDmMsgId: dmMsg.id }); addDbStat('write');
                     } catch (e) {}
                 }
             }
@@ -887,7 +814,6 @@ async function handleComponent(interaction, client) {
                 : `✅ 預約已送出！共 ${times} 筆訂單，請查看 DM 等待審核結果。`;
             
             await interaction.editReply({ content: replyMsg });
-            
             if (autoApprove) updateBoard(client);
         }
 
@@ -909,9 +835,7 @@ async function handleComponent(interaction, client) {
             const newNotes = interaction.fields.getTextInputValue('notes') || '無';
             
             const { formattedDate, formattedTime, parsedDate } = formatDateTimeStr(newDate, newTime);
-            newDate = formattedDate;
-            newTime = formattedTime;
-            const newDateTime = parsedDate;
+            newDate = formattedDate; newTime = formattedTime; const newDateTime = parsedDate;
 
             if (isNaN(newDateTime.getTime())) return interaction.followUp({ content: '❌ 格式錯誤，請確認日期格式。', ephemeral: true });
             if (newDateTime.getTime() <= Date.now()) return interaction.followUp({ content: '❌ 無法改為過去的時間。', ephemeral: true });
@@ -919,6 +843,7 @@ async function handleComponent(interaction, client) {
             const opMode = appSettings['operationMode'] || {};
             const frozenSlots = opMode.frozenSlots || [];
             const autoApprove = opMode.autoApprove || false;
+            const maxConcurrent = opMode.maxConcurrentOrders || 1;
 
             if (isTimeFrozen(newTime, frozenSlots, newDate)) {
                 const frozenMsg = getFrozenTextForDateStr(frozenSlots, newDate);
@@ -932,8 +857,11 @@ async function handleComponent(interaction, client) {
             const timeChanged = data.timestamp !== newDateTime.getTime();
 
             if (timeChanged) {
-                const isConflict = allReservations.some(res => res.id !== docId && res.location === data.location && Math.abs(newDateTime.getTime() - res.timestamp) < 10 * 60 * 1000 && res.status === 'approved');
-                if (isConflict) return interaction.followUp({ content: '❌ 申請時間前後10分鐘已排單。', ephemeral: true });
+                // 🌟 核心升級：編輯時間也要判斷同時段是否大於上限
+                const conflictingOrders = allReservations.filter(res => res.id !== docId && res.location === data.location && Math.abs(newDateTime.getTime() - res.timestamp) < 10 * 60 * 1000 && res.status === 'approved');
+                if (conflictingOrders.length >= maxConcurrent) {
+                    return interaction.followUp({ content: `❌ 申請時間前後10分鐘已達最大接單上限 (${maxConcurrent}單)，無法更改至此時段。`, ephemeral: true });
+                }
             }
 
             const isLastMinute = (data.timestamp - Date.now()) <= 30 * 60 * 1000;
@@ -956,8 +884,7 @@ async function handleComponent(interaction, client) {
             const newRefs = await bumpManagementMessages(client, data.ticketMsgs, payload.embeds[0], payload.components);
 
             await db.collection('reservations').doc(docId).update({ 
-                discordName: data.discordName,
-                date: newDate, time: newTime, gameId: newGameId, channel: newChannel, notes: newNotes,
+                discordName: data.discordName, date: newDate, time: newTime, gameId: newGameId, channel: newChannel, notes: newNotes,
                 timestamp: newDateTime.getTime(), reminded: false, status: data.status, reviewer: data.reviewer, takenBy: null, postChecked: false, dmFailed: false, buttonsRemoved: false, ticketMsgs: newRefs 
             });
             addDbStat('write');
@@ -974,7 +901,7 @@ async function handleComponent(interaction, client) {
 
             updateBoard(client);
         }
-    } // end of isModalSubmit()
+    }
 }
 
 module.exports = { handleComponent };
