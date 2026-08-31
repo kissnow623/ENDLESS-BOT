@@ -333,7 +333,7 @@ function buildAgentStatMessage(agentId) {
 
     const embed = new EmbedBuilder()
         .setColor(0x00FF00)
-        .setTitle(`📊 迴響專員接單績效 (${currentIndex + 1} /${agentIds.length})`)
+        .setTitle(`📊 迴響專員接單績效 (${currentIndex + 1} / ${agentIds.length})`)
         .setDescription(`**專員**：<@${agentId}>\n> 本月完成：\`${month}\` 次 (總計 \`${total}\`)\n> 本月免單招待：\`${monthFree}\` 次 (總計 \`${totalFree}\`)\n> 失敗/取消數：\`${failed}\` 次\n>\n> 💰 本月收益：\`${monthRevenue}\` 萬\n> 💰 總計收益：\`${totalRevenue}\` 萬`);
 
     const row = new ActionRowBuilder().addComponents(
@@ -371,11 +371,11 @@ function buildAgentDetailsMessage(agentId, page) {
                 statusIcon = '❌'; priceStr = `(失敗/取消)`;
             }
             const pName = o.discordName ? o.discordName.substring(0, 8) : '未知';
-            desc += `\`${o.date} ${o.time}\` ${statusIcon} **${o.location}**${priceStr}\n> 👤: ${pName} \vert{} 單號:${o.id.substring(0,6)}\n`;
+            desc += `\`${o.date} ${o.time}\` ${statusIcon} **${o.location}** ${priceStr}\n> 👤: ${pName} | 單號: ${o.id.substring(0,6)}\n`;
         });
     }
 
-    const embed = new EmbedBuilder().setColor(0x0099FF).setTitle(`📋 訂單明細 (第 ${p} /${totalPages} 頁)`).setDescription(desc);
+    const embed = new EmbedBuilder().setColor(0x0099FF).setTitle(`📋 訂單明細 (第 ${p} / ${totalPages} 頁)`).setDescription(desc);
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId(`agent_details_${agentId}_${p - 1}`).setLabel('◀ 上一頁').setStyle(ButtonStyle.Secondary).setDisabled(p <= 1),
         new ButtonBuilder().setCustomId(`agent_nav_curr_${agentId}`).setLabel('↩ 返回統計摘要').setStyle(ButtonStyle.Success),
@@ -432,7 +432,7 @@ function generateScheduleEmbed(reservations, isAdmin = false, page = 1, isComman
                 if (isAdmin) {
                     const userStats = stats[res.discordId] || { month: 0, total: 0 };
                     channelDisplay = ` | 頻道：${res.channel || '當日決定'}`;
-                    playerInfo = `ID：${res.gameId} | <@${res.discordId}>${playerNameDisplay} | 本月：${userStats.month}次 \vert{} 總：${userStats.total}次`;
+                    playerInfo = `ID：${res.gameId} | <@${res.discordId}>${playerNameDisplay} | 本月：${userStats.month}次 | 總：${userStats.total}次`;
                 } else {
                     channelDisplay = ''; 
                     playerInfo = `👤 🔒 匿名玩家`;
@@ -457,21 +457,20 @@ function generateScheduleEmbed(reservations, isAdmin = false, page = 1, isComman
             }
         }
 
-        // 🌟 新增：近期動態紀錄
+        // 🌟 修正：近期動態紀錄跑馬燈 (精確格式)
         const recentLogs = [...reservations]
             .filter(r => r.createdAt) // 確保有建立時間欄位
             .sort((a, b) => b.createdAt - a.createdAt) // 最新的在前面
             .slice(0, 3); // 抓取最新 3 筆顯示
 
         if (recentLogs.length > 0 && !isAdmin) {
-            scheduleText += `\n📢 **近期動態**\n`;
             recentLogs.forEach(r => {
                 const dateObj = new Date(r.createdAt + 8 * 3600000); // 轉換為台灣時間
                 const mm = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
                 const dd = String(dateObj.getUTCDate()).padStart(2, '0');
                 const hh = String(dateObj.getUTCHours()).padStart(2, '0');
                 const min = String(dateObj.getUTCMinutes()).padStart(2, '0');
-                scheduleText += `> \`${dateObj.getUTCFullYear()}-${mm}-${dd} ${hh}:${min}\` 新增迴響訂單預約\n`;
+                scheduleText += `${dateObj.getUTCFullYear()}-${mm}-${dd} ${hh}:${min} 新增迴響訂單預約\n`;
             });
             scheduleText += `\n`;
         }
