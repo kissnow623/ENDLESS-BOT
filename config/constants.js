@@ -1,6 +1,7 @@
 // config/constants.js
 
-const ALLOWED_GUILDS = ['1466073297169940543', '1536011422323179631', '1536416054832799795', '1539475243733622794']; 
+// 🌟 修改：將陣列留空，代表「允許所有伺服器使用」，不再阻擋測試！
+const ALLOWED_GUILDS = []; 
 
 const AGENT_ROLE_MAP = {
     'default': '1541411576228093963', 
