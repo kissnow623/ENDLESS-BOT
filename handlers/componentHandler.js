@@ -1,4 +1,5 @@
 // handlers/componentHandler.js
+const { sendStickerViaWebhook } = require('../utils/stickerHelpers');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, PermissionsBitField, MessageFlags } = require('discord.js');
 const { db, admin, addDbStat, getCache } = require('../utils/firebase');
 const { config, getAgentRoleId, classOptionsList, welcomeMessages, welcomeFriendMessages } = require('../config/constants');
