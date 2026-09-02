@@ -5,7 +5,13 @@ const { config, getAgentRoleId, MARKET_CHANNEL_ID } = require('../config/constan
 const { generateMemberLeaderboard, generateFriendLeaderboard, updateNickname } = require('../utils/guildHelpers');
 const { getTaiwanTime, updateBoard, checkIsAgent, buildAgentStatMessage, generateScheduleEmbed, broadcastToManagementAreas } = require('../utils/echoHelpers');
 const { sendStickerViaWebhook } = require('../utils/stickerHelpers');
-const { getMarketItem } = require('../utils/marketHelpers'); // 🌟 引入物價查詢
+const { getMarketItem, getAllMarketItems } = require('../utils/marketHelpers'); // 🌟 引入所有物價功能
+
+// 商城道具 WC 定價對照表
+const cashItemWcPrices = {
+    "AP初始化卷軸": 400, "SP初始化卷軸": 300, "高級瞬移之石": 36.36, "突襲額外獎勵票券": 171.42, "飄雪結晶": 27.27, "凍結加持器": 40.91, "高效能喇叭UP": 127.28, "戒指精選卷軸轉蛋券": 190,
+    "神祕背包": 250, "幸運滿滿轉蛋券": 190, "仲夏假期轉蛋券": 190
+};
 
 async function handleCommand(interaction, client) {
     const cmd = interaction.commandName;
@@ -16,46 +22,178 @@ async function handleCommand(interaction, client) {
     const hasAdminPerm = interaction.member?.permissions?.has(PermissionsBitField.Flags.Administrator); 
 
     // ------------------------------------------
-    // 📈 【物價查詢系統指令區】
+    // 📈 【物價進階分析指令區】
     // ------------------------------------------
-    if (cmd === '查價') {
+    if (['查價', '套利雷達', '課金指南', '衝卷試算'].includes(cmd)) {
         if (interaction.channelId !== MARKET_CHANNEL_ID) {
             return interaction.reply({ 
-                content: `❌ 查價功能請移駕至 <#${MARKET_CHANNEL_ID}> 頻道使用喔！`, 
-                flags: MessageFlags.Ephemeral 
-            });
-        }
-
-        const itemName = interaction.options.getString('物品名稱');
-        const itemData = getMarketItem(itemName);
-
-        if (!itemData) {
-            return interaction.reply({ 
-                content: `🔍 找不到 **${itemName}** 的報價，請確認名稱是否正確！`, 
+                content: `❌ 市場分析功能請移駕至 <#${MARKET_CHANNEL_ID}> 頻道使用喔！`, 
                 flags: MessageFlags.Ephemeral 
             });
         }
 
         const linkRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-                .setLabel('🌐 前往網頁查看更多數據')
+                .setLabel('🌐 前往網頁版 Artale 楓之股')
                 .setStyle(ButtonStyle.Link)
                 .setURL('https://artalestock.netlify.app/') 
         );
 
-        // 🌟 新增：使用高質感的 Embed 來展示價格與走勢圖
-        const embed = new EmbedBuilder()
-            .setColor(0x0f172a) // 對應圖表的深色科技背景
-            .setTitle(`📊 ${itemData.name}`)
-            .setDescription(`**最新價格：** \`${itemData.price}\`\n**近一次波動：** ${itemData.trend}`)
-            .setImage(itemData.chartUrl) // 🌟 呼叫剛剛在 marketHelpers 產生的圖表網址
-            .setFooter({ text: '價格走勢 (單位:萬) • 資料來源: Artale 楓之股', iconURL: client.user.displayAvatarURL() })
-            .setTimestamp();
+        // 🔍 一般查價
+        if (cmd === '查價') {
+            const itemName = interaction.options.getString('物品名稱');
+            const itemData = getMarketItem(itemName);
+            if (!itemData) return interaction.reply({ content: `🔍 找不到 **${itemName}** 的報價！`, flags: MessageFlags.Ephemeral });
 
-        return interaction.reply({
-            embeds: [embed],
-            components: [linkRow]
-        });
+            const embed = new EmbedBuilder()
+                .setColor(0x0f172a) 
+                .setTitle(`📊 ${itemData.name}`)
+                .setDescription(`**最新價格：** \`${itemData.price}\`\n**近一次波動：** ${itemData.trend}`)
+                .setImage(itemData.chartUrl)
+                .setFooter({ text: '價格走勢 (單位:萬) • 資料來源: Artale 楓之股', iconURL: client.user.displayAvatarURL() })
+                .setTimestamp();
+
+            return interaction.reply({ embeds: [embed], components: [linkRow] });
+        }
+
+        // ⚖️ 套利雷達
+        if (cmd === '套利雷達') {
+            const allItems = getAllMarketItems();
+            let validItems = allItems.filter(i => i.rawTrend !== 0 && !isNaN(i.rawTrend));
+            
+            // 排序：由高到低
+            validItems.sort((a, b) => b.rawTrend - a.rawTrend);
+            
+            const premiumItems = validItems.slice(0, 5); // 漲幅最高前五
+            const discountItems = validItems.slice(-5).reverse(); // 跌幅最大前五 (反轉讓跌最多的在最前面)
+
+            let premiumText = premiumItems.map((item, i) => `**${i+1}.** ${item.name} \n└ 📈 \`+${item.rawTrend.toFixed(2)}%\` (報價: ${item.price})`).join('\n\n');
+            let discountText = discountItems.map((item, i) => `**${i+1}.** ${item.name} \n└ 📉 \`${item.rawTrend.toFixed(2)}%\` (報價: ${item.price})`).join('\n\n');
+
+            const embed = new EmbedBuilder()
+                .setColor(0x3B82F6)
+                .setTitle('🎯 市場行情套利雷達')
+                .addFields(
+                    { name: '🔥 【溢價急漲區】(建議出售)', value: premiumText || '目前無顯著急漲物品', inline: true },
+                    { name: '🧊 【折價超跌區】(建議掃貨)', value: discountText || '目前無顯著超跌物品', inline: true }
+                )
+                .setFooter({ text: '市場瞬息萬變，投資理財有賺有賠', iconURL: client.user.displayAvatarURL() });
+
+            return interaction.reply({ embeds: [embed], components: [linkRow] });
+        }
+
+        // 💳 課金指南
+        if (cmd === '課金指南') {
+            const twd = interaction.options.getInteger('台幣金額');
+            const rate = interaction.options.getNumber('點數比值') || 6.63;
+            const totalWc = twd * rate;
+            
+            const allItems = getAllMarketItems();
+            let results = [];
+
+            for (const item of allItems) {
+                const cleanName = item.name.replace("[商城道具]", "").trim();
+                const wcPrice = cashItemWcPrices[item.name] || cashItemWcPrices[cleanName];
+                if (wcPrice > 0 && item.rawPrice > 0) {
+                    const totalMesos = (totalWc / wcPrice) * item.rawPrice;
+                    results.push({ 
+                        name: cleanName, 
+                        mesos: totalMesos, 
+                        efficiency: Math.floor(item.rawPrice / wcPrice) // 每1點WC可換得的楓幣
+                    });
+                }
+            }
+
+            if (results.length === 0) return interaction.reply({ content: '❌ 無法取得商城道具的報價資料。', flags: MessageFlags.Ephemeral });
+
+            results.sort((a, b) => b.mesos - a.mesos);
+            const topResults = results.slice(0, 3);
+
+            let descText = `**預計投入台幣：** \`${twd.toLocaleString()}\` TWD\n**轉換點數：** \`${totalWc.toLocaleString()}\` WC (匯率 ${rate})\n\n🏆 **最高效率方案 Top 3：**\n\n`;
+            topResults.forEach((res, i) => {
+                const mesoStr = res.mesos >= 100000000 ? `${(res.mesos / 100000000).toFixed(2)} 億` : `${Math.floor(res.mesos / 10000).toLocaleString()} 萬`;
+                descText += `**${i+1}. 買【${res.name}】去賣**\n└ 預估可得楓幣：💰 **\`${mesoStr}\`** (效率: ${res.efficiency.toLocaleString()} 楓幣/WC)\n\n`;
+            });
+
+            const embed = new EmbedBuilder()
+                .setColor(0xF59E0B)
+                .setTitle('💳 台幣 (TWD) ➡️ 楓幣 最佳化轉換試算')
+                .setDescription(descText);
+
+            return interaction.reply({ embeds: [embed], components: [linkRow] });
+        }
+
+        // 🧮 衝卷試算
+        if (cmd === '衝卷試算') {
+            const eqPrice = interaction.options.getNumber('裝備底價'); // 萬
+            const scPrice = interaction.options.getNumber('卷軸價格'); // 萬
+            const succ = interaction.options.getInteger('成功率');
+            const slots = interaction.options.getInteger('剩餘次數');
+            const dest = interaction.options.getInteger('毀損率') || 0;
+
+            if (succ <= 0 || succ > 100) return interaction.reply({ content: '❌ 成功率請輸入 1~100 之間的數字！', flags: MessageFlags.Ephemeral });
+
+            // DP 動態規劃演算法核心
+            let dp = [];
+            dp[0] = {0: 1.0};
+            let attemptCost = eqPrice; // 萬
+            let surviveProb = 1.0;
+            let p = succ / 100.0;
+            let d = dest / 100.0;
+            let f = Math.max(0, 1.0 - p - d);
+
+            for (let s = 0; s < slots; s++) {
+                attemptCost += scPrice * surviveProb;
+                let next_dp = {};
+                surviveProb = 0;
+                for (let k in dp[s]) {
+                    k = parseInt(k);
+                    let prob = dp[s][k];
+                    if (prob > 0) {
+                        next_dp[k+1] = (next_dp[k+1] || 0) + prob * p;
+                        next_dp[k] = (next_dp[k] || 0) + prob * f;
+                    }
+                }
+                dp[s+1] = next_dp;
+                for(let k in next_dp) surviveProb += next_dp[k];
+            }
+            let destroyProb = 1.0 - surviveProb;
+
+            let embed = new EmbedBuilder()
+                .setTitle('🧮 動態衝卷期望值計算機')
+                .setColor(0x10B981);
+
+            let desc = `**裝備底價:** ${eqPrice} 萬 | **單張卷軸:** ${scPrice} 萬\n**成功率:** ${succ}% | **爆裝率:** ${dest}%\n**剩餘卷軸數:** ${slots}\n\n`;
+            if (dest > 0) {
+                desc += `💥 **總爆裝毀損機率:** \`${(destroyProb * 100).toFixed(2)}%\`\n\n`;
+            }
+
+            for (let k = slots; k >= 0; k--) {
+                let prob = dp[slots][k] || 0;
+                if (prob < 0.000001 && k !== 0) continue;
+
+                let expectedCostText = '--';
+                if (eqPrice > 0 && scPrice > 0 && k >= Math.floor(slots / 2) + 1) {
+                    let expectedCost = prob > 0 ? (attemptCost / prob) : 0;
+                    if (expectedCost >= 10000) {
+                        expectedCostText = `${(expectedCost / 10000).toFixed(2)} 億`;
+                    } else {
+                        expectedCostText = `${Math.floor(expectedCost).toLocaleString('en-US')} 萬`;
+                    }
+                }
+
+                desc += `> 🛡️ **${slots} 過 ${k}**\n> 達成機率：\`${(prob * 100).toFixed(2)}%\`\n`;
+                if (k >= Math.floor(slots / 2) + 1) {
+                    desc += `> 💰 期望造價：\`${expectedCostText}\`\n`;
+                }
+                desc += '\n';
+            }
+
+            embed.setDescription(desc)
+                 .setFooter({ text: '※ 期望造價僅供參考，請衡量自身歐非體質', iconURL: client.user.displayAvatarURL() });
+
+            return interaction.reply({ embeds: [embed], components: [linkRow] });
+        }
     }
 
     // ------------------------------------------
