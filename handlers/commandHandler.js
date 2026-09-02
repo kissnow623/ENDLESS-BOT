@@ -5,7 +5,7 @@ const { config, getAgentRoleId, MARKET_CHANNEL_ID } = require('../config/constan
 const { generateMemberLeaderboard, generateFriendLeaderboard, updateNickname } = require('../utils/guildHelpers');
 const { getTaiwanTime, updateBoard, checkIsAgent, buildAgentStatMessage, generateScheduleEmbed, broadcastToManagementAreas } = require('../utils/echoHelpers');
 const { sendStickerViaWebhook } = require('../utils/stickerHelpers');
-const { getMarketItem, getAllMarketItems } = require('../utils/marketHelpers'); // 🌟 引入所有物價功能
+const { getMarketItem, getAllMarketItems } = require('../utils/marketHelpers'); 
 
 // 商城道具 WC 定價對照表
 const cashItemWcPrices = {
@@ -61,11 +61,10 @@ async function handleCommand(interaction, client) {
             const allItems = getAllMarketItems();
             let validItems = allItems.filter(i => i.rawTrend !== 0 && !isNaN(i.rawTrend));
             
-            // 排序：由高到低
             validItems.sort((a, b) => b.rawTrend - a.rawTrend);
             
-            const premiumItems = validItems.slice(0, 5); // 漲幅最高前五
-            const discountItems = validItems.slice(-5).reverse(); // 跌幅最大前五 (反轉讓跌最多的在最前面)
+            const premiumItems = validItems.slice(0, 5); 
+            const discountItems = validItems.slice(-5).reverse(); 
 
             let premiumText = premiumItems.map((item, i) => `**${i+1}.** ${item.name} \n└ 📈 \`+${item.rawTrend.toFixed(2)}%\` (報價: ${item.price})`).join('\n\n');
             let discountText = discountItems.map((item, i) => `**${i+1}.** ${item.name} \n└ 📉 \`${item.rawTrend.toFixed(2)}%\` (報價: ${item.price})`).join('\n\n');
@@ -99,7 +98,7 @@ async function handleCommand(interaction, client) {
                     results.push({ 
                         name: cleanName, 
                         mesos: totalMesos, 
-                        efficiency: Math.floor(item.rawPrice / wcPrice) // 每1點WC可換得的楓幣
+                        efficiency: Math.floor(item.rawPrice / wcPrice) 
                     });
                 }
             }
@@ -123,71 +122,117 @@ async function handleCommand(interaction, client) {
             return interaction.reply({ embeds: [embed], components: [linkRow] });
         }
 
-        // 🧮 衝卷試算
+        // 🧮 衝卷試算 (終極完全體)
         if (cmd === '衝卷試算') {
-            const eqPrice = interaction.options.getNumber('裝備底價'); // 萬
-            const scPrice = interaction.options.getNumber('卷軸價格'); // 萬
-            const succ = interaction.options.getInteger('成功率');
-            const slots = interaction.options.getInteger('剩餘次數');
-            const dest = interaction.options.getInteger('毀損率') || 0;
+            // 自動相容舊版與新版的參數名稱
+            const equipPrice = interaction.options.getNumber('裝備底價'); 
+            const slots = interaction.options.getInteger('裝備總衝數') || interaction.options.getInteger('剩餘次數');
+            const target = interaction.options.getInteger('目標過數') || slots;
+            const tolerance = interaction.options.getInteger('容許失敗數') ?? slots; // 不填預設為無限制硬衝
+            
+            const s1Price = interaction.options.getNumber('主力卷價格') || interaction.options.getNumber('卷軸價格');
+            const s1Prob = interaction.options.getInteger('主力卷成功率') || interaction.options.getInteger('成功率');
+            const s1Dest = interaction.options.getInteger('主力卷毀損率') || interaction.options.getInteger('毀損率') || 0;
+            
+            const s2Price = interaction.options.getNumber('備用卷價格') || 0;
+            const s2Prob = interaction.options.getInteger('備用卷成功率') || 0;
+            const s2Dest = interaction.options.getInteger('備用卷毀損率') || 0;
+            
+            const cssPrice = interaction.options.getNumber('純白卷價格') || 0;
+            const cssProb = interaction.options.getInteger('純白成功率') || 0;
+            const cssDest = interaction.options.getInteger('純白毀損率') || 0;
+            
+            const marketPrice = interaction.options.getNumber('成品市價') || 0;
 
-            if (succ <= 0 || succ > 100) return interaction.reply({ content: '❌ 成功率請輸入 1~100 之間的數字！', flags: MessageFlags.Ephemeral });
+            if (s1Prob <= 0 || s1Prob > 100) return interaction.reply({ content: '❌ 成功率請輸入 1~100 之間的數字！', flags: MessageFlags.Ephemeral });
+            if (target > slots) return interaction.reply({ content: '❌ 目標過數不能大於總衝數！', flags: MessageFlags.Ephemeral });
 
-            // DP 動態規劃演算法核心
-            let dp = [];
-            dp[0] = {0: 1.0};
-            let attemptCost = eqPrice; // 萬
-            let surviveProb = 1.0;
-            let p = succ / 100.0;
-            let d = dest / 100.0;
-            let f = Math.max(0, 1.0 - p - d);
+            // 計算各項失敗率
+            const s1Fail = Math.max(0, 100 - s1Prob - s1Dest);
+            const s2Enabled = s2Price > 0 && s2Prob > 0;
+            const s2Fail = s2Enabled ? Math.max(0, 100 - s2Prob - s2Dest) : 0;
+            const cssEnabled = cssPrice > 0 && cssProb > 0;
+            const cssFail = cssEnabled ? Math.max(0, 100 - cssProb - cssDest) : 0;
 
-            for (let s = 0; s < slots; s++) {
-                attemptCost += scPrice * surviveProb;
-                let next_dp = {};
-                surviveProb = 0;
-                for (let k in dp[s]) {
-                    k = parseInt(k);
-                    let prob = dp[s][k];
-                    if (prob > 0) {
-                        next_dp[k+1] = (next_dp[k+1] || 0) + prob * p;
-                        next_dp[k] = (next_dp[k] || 0) + prob * f;
+            // 🧠 DP 動態規劃核心引擎：二分搜尋法尋找最佳初始期望造價
+            const getExpectedCostMatrix = (resetCost) => {
+                let V = Array(target + 1).fill(0).map(() => Array(tolerance + 2).fill(resetCost));
+                for (let f = 0; f <= tolerance; f++) V[target][f] = 0;
+
+                for (let k = target - 1; k >= 0; k--) {
+                    for (let iter = 0; iter < 100; iter++) { // 處理純白卷軸的狀態迴圈收斂
+                        for (let f = tolerance; f >= 0; f--) {
+                            let costGiveup = resetCost;
+                            let costScroll = resetCost;
+                            
+                            // 評估：該砸主力卷還是備用卷？
+                            if (k + f < slots) {
+                                let c1 = s1Price + (s1Prob/100)*V[k+1][f] + (s1Fail/100)*V[k][f+1] + (s1Dest/100)*resetCost;
+                                let c2 = Infinity;
+                                if (s2Enabled) {
+                                    c2 = s2Price + (s2Prob/100)*V[k+1][f] + (s2Fail/100)*V[k][f+1] + (s2Dest/100)*resetCost;
+                                }
+                                costScroll = Math.min(c1, c2); // AI 會自動選當下期望值最便宜的卷軸
+                            }
+
+                            // 評估：如果失敗了，該放棄還是貼純白？
+                            let costCss = Infinity;
+                            if (f > 0 && cssEnabled) {
+                                let denom = 1 - (cssFail / 100);
+                                if (denom > 0) {
+                                    costCss = (cssPrice + (cssProb/100)*V[k][f-1] + (cssDest/100)*resetCost) / denom;
+                                }
+                            }
+                            
+                            // 決策：選擇三條路中最省錢的一條
+                            V[k][f] = Math.min(costGiveup, costScroll, costCss);
+                        }
                     }
                 }
-                dp[s+1] = next_dp;
-                for(let k in next_dp) surviveProb += next_dp[k];
+                return V;
+            };
+
+            let low = 0, high = 1e12; // 支援極限運算至 1 兆楓幣
+            let optimalCost = 0;
+            for (let i = 0; i < 80; i++) {
+                let mid = (low + high) / 2;
+                let optV = getExpectedCostMatrix(mid);
+                if (optV[0][0] + equipPrice < mid) {
+                    high = mid;
+                } else {
+                    low = mid;
+                }
             }
-            let destroyProb = 1.0 - surviveProb;
+            optimalCost = high;
 
             let embed = new EmbedBuilder()
-                .setTitle('🧮 動態衝卷期望值計算機')
+                .setTitle('🧮 終極動態衝卷計算機 (AI 最佳決策模型)')
                 .setColor(0x10B981);
 
-            let desc = `**裝備底價:** ${eqPrice} 萬 | **單張卷軸:** ${scPrice} 萬\n**成功率:** ${succ}% | **爆裝率:** ${dest}%\n**剩餘卷軸數:** ${slots}\n\n`;
-            if (dest > 0) {
-                desc += `💥 **總爆裝毀損機率:** \`${(destroyProb * 100).toFixed(2)}%\`\n\n`;
-            }
+            let desc = `**裝備底價:** ${equipPrice} 萬 | **總衝數:** ${slots}\n`;
+            desc += `**目標:** ${slots} 過 ${target} | **容許失敗:** ${tolerance === slots ? '無限制 (盲衝)' : tolerance + ' 次 (停損)'}\n`;
+            desc += `**主力卷軸:** ${s1Price}萬 (${s1Prob}% / 爆${s1Dest}%)\n`;
+            if (s2Enabled) desc += `**備用/墊刀卷:** ${s2Price}萬 (${s2Prob}% / 爆${s2Dest}%)\n`;
+            if (cssEnabled) desc += `**純白救援:** ${cssPrice}萬 (${cssProb}% / 爆${cssDest}%)\n`;
+            
+            let costStr = optimalCost >= 10000 ? `${(optimalCost / 10000).toFixed(2)} 億` : `${Math.floor(optimalCost).toLocaleString()} 萬`;
 
-            for (let k = slots; k >= 0; k--) {
-                let prob = dp[slots][k] || 0;
-                if (prob < 0.000001 && k !== 0) continue;
+            desc += `\n🎯 **AI 最佳化預期總造價:** \`${costStr}\`\n`;
 
-                let expectedCostText = '--';
-                if (eqPrice > 0 && scPrice > 0 && k >= Math.floor(slots / 2) + 1) {
-                    let expectedCost = prob > 0 ? (attemptCost / prob) : 0;
-                    if (expectedCost >= 10000) {
-                        expectedCostText = `${(expectedCost / 10000).toFixed(2)} 億`;
-                    } else {
-                        expectedCostText = `${Math.floor(expectedCost).toLocaleString('en-US')} 萬`;
-                    }
+            if (marketPrice > 0) {
+                let profit = marketPrice - optimalCost;
+                let profitStr = Math.abs(profit) >= 10000 ? `${(Math.abs(profit) / 10000).toFixed(2)} 億` : `${Math.floor(Math.abs(profit)).toLocaleString()} 萬`;
+                let marketStr = marketPrice >= 10000 ? `${(marketPrice / 10000).toFixed(2)} 億` : `${marketPrice.toLocaleString()} 萬`;
+                
+                desc += `\n🛒 **成品市價:** ${marketStr}\n`;
+                if (profit > 0) {
+                    desc += `📈 **投資建議:** **強烈建議製作！** (預期淨賺 \`${profitStr}\`)\n`;
+                } else {
+                    desc += `📉 **投資建議:** **直接買現成的！** (自己衝預期會虧損 \`${profitStr}\`)\n`;
                 }
-
-                desc += `> 🛡️ **${slots} 過 ${k}**\n> 達成機率：\`${(prob * 100).toFixed(2)}%\`\n`;
-                if (k >= Math.floor(slots / 2) + 1) {
-                    desc += `> 💰 期望造價：\`${expectedCostText}\`\n`;
-                }
-                desc += '\n';
             }
+            
+            desc += `\n*(💡 內部運算：模擬千萬次停損、混卷與純白救援之數學最佳解)*`;
 
             embed.setDescription(desc)
                  .setFooter({ text: '※ 期望造價僅供參考，請衡量自身歐非體質', iconURL: client.user.displayAvatarURL() });
