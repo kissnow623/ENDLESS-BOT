@@ -12,6 +12,22 @@ async function handleComponent(interaction, client) {
     // ===================================
     // 👉 Buttons (按鈕互動)
     // ===================================
+            // --- 🎨 貼圖系統按鈕 ---
+    if (interaction.customId.startsWith('send_sticker_')) {
+            const stickerName = interaction.customId.replace('send_sticker_', '');
+            const { stickers } = getCache();
+            const sticker = stickers.find(s => s.name === stickerName);
+            
+            if (!sticker) return interaction.update({ content: '❌ 貼圖已失效或被刪除。', embeds: [], components: [] });
+            
+            await interaction.update({ content: '✅ 貼圖發送中...', embeds: [], components: [] });
+            await sendStickerViaWebhook(interaction, sticker.url, client);
+            return interaction.deleteReply();
+        }
+
+        if (interaction.customId === 'cancel_sticker') {
+            return interaction.update({ content: '🗑️ 已取消發送。', embeds: [], components: [] });
+        }
     if (interaction.isButton()) {
         
         if (interaction.customId === 'btn_member' || interaction.customId === 'btn_friend') {
