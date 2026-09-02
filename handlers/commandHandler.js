@@ -16,7 +16,7 @@ async function handleCommand(interaction, client) {
     const hasAdminPerm = interaction.member?.permissions?.has(PermissionsBitField.Flags.Administrator); 
 
     // ------------------------------------------
-    // 📈 【物價查詢系統指令區】(🌟 全新加入)
+    // 📈 【物價查詢系統指令區】
     // ------------------------------------------
     if (cmd === '查價') {
         if (interaction.channelId !== MARKET_CHANNEL_ID) {
@@ -36,8 +36,17 @@ async function handleCommand(interaction, client) {
             });
         }
 
+        // 🌟 新增：建立一個導向原網站的連結按鈕
+        const linkRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setLabel('📈 網頁查看完整 K 線圖')
+                .setStyle(ButtonStyle.Link)
+                .setURL('https://artalestock.netlify.app/') 
+        );
+
         return interaction.reply({
-            content: `📊 **${itemData.name}**\n💰 最新價格：\`${itemData.price}\`\n📈 漲跌趨勢：${itemData.trend}`
+            content: `📊 **${itemData.name}**\n💰 最新價格：\`${itemData.price}\`\n📈 漲跌趨勢：${itemData.trend}`,
+            components: [linkRow] // 🌟 將按鈕加入到回覆中
         });
     }
 
