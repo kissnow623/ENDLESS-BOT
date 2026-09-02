@@ -590,6 +590,39 @@ async function handleComponent(interaction, client) {
     // ===================================
     else if (interaction.isModalSubmit()) {
         
+        // 🎭 🌟 新增：批次新增表情包表單接收
+        if (interaction.customId === 'modal_batch_emotes') {
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+            const rawData = interaction.fields.getTextInputValue('emotes_data');
+            const lines = rawData.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+            
+            let successCount = 0;
+            let failCount = 0;
+            const batch = db.batch(); // 使用 Firebase Batch 進行批次寫入
+            
+            for (const line of lines) {
+                const parts = line.split(',');
+                if (parts.length >= 2) {
+                    const name = parts[0].trim();
+                    const url = parts[1].trim();
+                    const emoji = parts[2] ? parts[2].trim() : '';
+                    const description = parts[3] ? parts[3].trim() : '';
+                    
+                    const docRef = db.collection('emotes').doc(name);
+                    batch.set(docRef, { name, url, emoji, description, timestamp: Date.now() });
+                    successCount++;
+                } else {
+                    failCount++;
+                }
+            }
+            
+            if (successCount > 0) {
+                await batch.commit();
+                addDbStat('write', successCount);
+            }
+            return interaction.editReply({ content: `✅ **批次新增完成！**\n成功新增：**${successCount}** 筆\n格式錯誤略過：**${failCount}** 筆\n\n現在大家都可以使用 \`/表情包\` 並透過關鍵字搜尋這些新圖了！` });
+        }
+
         if (interaction.customId.startsWith('modal_member_')) {
             const selectedClassesStr = interaction.customId.replace('modal_member_', '');
             const classesForDisplay = selectedClassesStr.replace(/-/g, '｜');
