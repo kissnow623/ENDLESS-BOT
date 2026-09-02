@@ -18,19 +18,27 @@ module.exports = {
 
             // 🌟 分流：自動補全 (Autocomplete) 專門給「表情包」搜尋用
             if (interaction.isAutocomplete()) {
-                if (interaction.commandName === '表情包') {
-                    const focusedValue = interaction.options.getFocused();
-                    const { emotes } = getCache();
-                    if (!emotes) return interaction.respond([]);
-                    
-                    // 模糊搜尋 (過濾包含玩家輸入關鍵字的表情包)，最多回傳25筆
-                    const filtered = emotes.filter(e => e.name.includes(focusedValue)).slice(0, 25);
-                    
-                    await interaction.respond(
-                        filtered.map(choice => ({ name: choice.name, value: choice.name }))
-                    );
+                try {
+                    if (interaction.commandName === '表情包') {
+                        // 防呆：確保 focusedValue 不會是 undefined，如果沒打字預設為空字串
+                        const focusedValue = interaction.options.getFocused() || '';
+                        const { emotes } = getCache();
+                        
+                        if (!emotes || emotes.length === 0) {
+                            return await interaction.respond([]);
+                        }
+                        
+                        // 模糊搜尋 (過濾包含玩家輸入關鍵字的表情包)，最多回傳25筆
+                        const filtered = emotes.filter(e => e.name.includes(focusedValue)).slice(0, 25);
+                        
+                        await interaction.respond(
+                            filtered.map(choice => ({ name: choice.name, value: choice.name }))
+                        );
+                    }
+                } catch (err) {
+                    console.error("⚠️ Autocomplete 搜尋發生錯誤：", err);
                 }
-                return;
+                return; // 自動補全處理完必須 return
             }
 
             // 分流：斜線指令 (Chat Input Commands)
