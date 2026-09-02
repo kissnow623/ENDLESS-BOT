@@ -36,17 +36,25 @@ async function handleCommand(interaction, client) {
             });
         }
 
-        // 🌟 新增：建立一個導向原網站的連結按鈕
         const linkRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
-                .setLabel('📈 網頁查看完整 K 線圖')
+                .setLabel('🌐 前往網頁查看更多數據')
                 .setStyle(ButtonStyle.Link)
                 .setURL('https://artalestock.netlify.app/') 
         );
 
+        // 🌟 新增：使用高質感的 Embed 來展示價格與走勢圖
+        const embed = new EmbedBuilder()
+            .setColor(0x0f172a) // 對應圖表的深色科技背景
+            .setTitle(`📊 ${itemData.name}`)
+            .setDescription(`**最新價格：** \`${itemData.price}\`\n**近一次波動：** ${itemData.trend}`)
+            .setImage(itemData.chartUrl) // 🌟 呼叫剛剛在 marketHelpers 產生的圖表網址
+            .setFooter({ text: '價格走勢 (單位:萬) • 資料來源: Artale 楓之股', iconURL: client.user.displayAvatarURL() })
+            .setTimestamp();
+
         return interaction.reply({
-            content: `📊 **${itemData.name}**\n💰 最新價格：\`${itemData.price}\`\n📈 漲跌趨勢：${itemData.trend}`,
-            components: [linkRow] // 🌟 將按鈕加入到回覆中
+            embeds: [embed],
+            components: [linkRow]
         });
     }
 
