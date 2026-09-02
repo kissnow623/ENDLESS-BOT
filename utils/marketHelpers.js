@@ -1,7 +1,6 @@
 // utils/marketHelpers.js
 let marketCache = [];
 
-// 🌟 新增：專門用來產生 QuickChart 高質感圖表網址的函式
 const generateChartUrl = (labels, history) => {
     const chartConfig = {
         type: 'line',
@@ -10,12 +9,12 @@ const generateChartUrl = (labels, history) => {
             datasets: [{
                 label: '價格 (萬)',
                 data: history,
-                borderColor: '#4facfe', // 科技感漸層藍
+                borderColor: '#4facfe', 
                 backgroundColor: 'rgba(79, 172, 254, 0.1)',
                 borderWidth: 2,
-                pointRadius: 0, // 隱藏折線點，讓曲線更平滑
+                pointRadius: 0, 
                 fill: true,
-                tension: 0.4    // 曲線平滑度
+                tension: 0.4    
             }]
         },
         options: {
@@ -27,7 +26,6 @@ const generateChartUrl = (labels, history) => {
         }
     };
     
-    // 將設定轉為 JSON 字串並編碼，套用深色背景 (#0B132B)
     const encodedConfig = encodeURIComponent(JSON.stringify(chartConfig));
     return `https://quickchart.io/chart?c=${encodedConfig}&w=500&h=250&bkg=%230f172a`;
 };
@@ -59,7 +57,6 @@ const updateMarketData = async () => {
                 let historyData = [];
                 let historyLabels = [];
                 
-                // 🌟 收集歷史資料 (從舊到新，最多取最後 15 筆)
                 for (let r = 0; r < data.rows.length; r++) {
                     const timeStr = data.rows[r][0];
                     const cellVal = data.rows[r][i];
@@ -67,10 +64,8 @@ const updateMarketData = async () => {
                     if (cellVal !== "" && cellVal !== null && cellVal !== undefined && cellVal !== 0 && cellVal !== "0") {
                         const numVal = Number(cellVal);
                         if (!isNaN(numVal)) {
-                            // 價格除以 10000 變成「萬」，圖表才不會被巨大的零塞爆
                             historyData.push((numVal / 10000).toFixed(0));
                             
-                            // 格式化時間標籤 (例如：09/02 21:00)
                             const d = new Date(timeStr);
                             const mm = String(d.getMonth() + 1).padStart(2, '0');
                             const dd = String(d.getDate()).padStart(2, '0');
@@ -85,6 +80,7 @@ const updateMarketData = async () => {
 
                 if (itemName && currentPrice !== null) {
                     let trendStr = '--';
+                    let rawTrendValue = 0;
                     const currNum = Number(currentPrice);
                     const prevNum = Number(prevPrice);
 
@@ -93,16 +89,15 @@ const updateMarketData = async () => {
                         if (diff === 0) {
                             trendStr = '持平 ➖';
                         } else {
-                            const percent = ((diff / prevNum) * 100).toFixed(2);
-                            trendStr = diff > 0 ? `▲ +${percent}%` : `▼ ${percent}%`;
+                            const percent = ((diff / prevNum) * 100);
+                            rawTrendValue = percent; // 🌟 存原始數字供雷達排序
+                            trendStr = diff > 0 ? `▲ +${percent.toFixed(2)}%` : `▼ ${percent.toFixed(2)}%`;
                         }
                     } else if (prevPrice === null) {
                         trendStr = '🆕 新上架/近期無交易';
                     }
 
                     const formattedPrice = !isNaN(currNum) ? currNum.toLocaleString('en-US') : currentPrice;
-                    
-                    // 只取最近 15 筆畫圖，避免圖表太擠
                     const recentLabels = historyLabels.slice(-15);
                     const recentData = historyData.slice(-15);
                     const finalChartUrl = generateChartUrl(recentLabels, recentData);
@@ -110,8 +105,10 @@ const updateMarketData = async () => {
                     newCache.push({
                         name: String(itemName).trim(),
                         price: formattedPrice,
+                        rawPrice: isNaN(currNum) ? 0 : currNum, // 🌟 存原始數字供計算
                         trend: trendStr,
-                        chartUrl: finalChartUrl // 🌟 將產生的圖表網址存入快取
+                        rawTrend: rawTrendValue,
+                        chartUrl: finalChartUrl
                     });
                 }
             }
@@ -135,8 +132,14 @@ const searchMarketItems = (query) => {
         .slice(0, 25);
 };
 
+// 🌟 新增：取得所有物品以供雷達運算
+const getAllMarketItems = () => {
+    return marketCache;
+};
+
 module.exports = {
     updateMarketData,
     getMarketItem,
-    searchMarketItems
+    searchMarketItems,
+    getAllMarketItems
 };
