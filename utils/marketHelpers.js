@@ -9,22 +9,46 @@ const updateMarketData = async () => {
         const response = await fetch(apiUrl);
         const data = await response.json();
 
-        // 針對該 API 特殊的 headers 與 rows 結構進行解析
         if (data && Array.isArray(data.headers) && Array.isArray(data.rows) && data.rows.length > 0) {
             const headers = data.headers;
-            const latestRow = data.rows[data.rows.length - 1]; // 取得最後一筆最新報價
+            const latestRow = data.rows[data.rows.length - 1]; // 最新報價
+            
+            // 嘗試取得「上一筆」報價來計算漲跌 (如果資料只有一筆就拿最新的一筆)
+            const previousRow = data.rows.length > 1 ? data.rows[data.rows.length - 2] : latestRow;
             const newCache = [];
 
             // 迴圈從 1 開始，跳過索引 0 的 'Timestamp'
             for (let i = 1; i < headers.length; i++) {
                 const itemName = headers[i];
-                const itemPrice = latestRow[i];
+                const currentPrice = latestRow[i];
+                const prevPrice = previousRow[i];
 
-                if (itemName && itemPrice !== undefined && itemPrice !== null && itemPrice !== '') {
+                if (itemName && currentPrice !== undefined && currentPrice !== null && currentPrice !== '') {
+                    let trendStr = '--';
+                    
+                    // 將字串轉換為數字以進行計算
+                    const currNum = Number(currentPrice);
+                    const prevNum = Number(prevPrice);
+
+                    // 判斷是否為有效數字，並計算漲跌幅
+                    if (!isNaN(currNum) && !isNaN(prevNum) && prevNum > 0) {
+                        const diff = currNum - prevNum;
+                        if (diff === 0) {
+                            trendStr = '持平 ➖';
+                        } else {
+                            // 計算百分比並取小數點後兩位
+                            const percent = ((diff / prevNum) * 100).toFixed(2);
+                            trendStr = diff > 0 ? `▲ +${percent}%` : `▼ ${percent}%`;
+                        }
+                    }
+
+                    // 為價格加上千分位逗號 (例如 148,000,000)
+                    const formattedPrice = !isNaN(currNum) ? currNum.toLocaleString('en-US') : currentPrice;
+
                     newCache.push({
                         name: String(itemName).trim(),
-                        price: String(itemPrice),
-                        trend: '--' // 此 API 未提供漲跌幅，預設為 '--'
+                        price: formattedPrice,
+                        trend: trendStr
                     });
                 }
             }
