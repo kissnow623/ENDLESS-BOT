@@ -63,11 +63,11 @@ module.exports = {
             }
         ];
         
-        // 📈 🌟 新增物價查詢指令
+        // 📈 🌟 新增物價查詢與進階分析指令
         const marketCommands = [
             {
                 name: '查價',
-                description: '查詢 Artale 楓之股最新物價',
+                description: '查詢 Artale 楓之股最新物價與走勢圖',
                 options: [
                     {
                         name: '物品名稱',
@@ -76,6 +76,29 @@ module.exports = {
                         required: true,
                         autocomplete: true
                     }
+                ]
+            },
+            {
+                name: '套利雷達',
+                description: '分析市場行情，列出目前漲跌幅最大的前五名道具'
+            },
+            {
+                name: '課金指南',
+                description: '計算如何將台幣(TWD)最大化轉換為楓幣',
+                options: [
+                    { name: '台幣金額', description: '預計投入的台幣預算 (TWD)', type: ApplicationCommandOptionType.Integer, required: true },
+                    { name: '點數比值', description: '1台幣可換多少WC? (不填則預設為官方 6.63)', type: ApplicationCommandOptionType.Number, required: false }
+                ]
+            },
+            {
+                name: '衝卷試算',
+                description: '動態規劃演算法：計算衝卷機率與期望總造價',
+                options: [
+                    { name: '裝備底價', description: '裝備本身的價格 (單位：萬)', type: ApplicationCommandOptionType.Number, required: true },
+                    { name: '卷軸價格', description: '單張卷軸的價格 (單位：萬)', type: ApplicationCommandOptionType.Number, required: true },
+                    { name: '成功率', description: '卷軸的成功率 (1-100)', type: ApplicationCommandOptionType.Integer, required: true },
+                    { name: '剩餘次數', description: '裝備剩餘可衝卷次數 (1-10)', type: ApplicationCommandOptionType.Integer, required: true },
+                    { name: '毀損率', description: '卷軸失敗時的爆裝率 (不填預設為 0)', type: ApplicationCommandOptionType.Integer, required: false }
                 ]
             }
         ];
