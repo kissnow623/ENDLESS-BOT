@@ -46,7 +46,8 @@ function addDbStat(type, count = 1) {
 const cache = {
     allReservations: [],
     appSettings: {},
-    stickers: [] // 🌟 新增：存放所有貼圖的快取陣列
+    stickers: [], // 🌟 存放所有貼圖的快取陣列
+    emotes: []    // 🌟 新增：存放所有表情包的快取陣列
 };
 
 const ninetyDaysAgo = Date.now() - 90 * 24 * 60 * 60 * 1000;
@@ -60,10 +61,16 @@ db.collection('settings').onSnapshot(snapshot => {
     snapshot.docs.forEach(doc => { cache.appSettings[doc.id] = doc.data(); });
 });
 
-// 🌟 新增：監聽貼圖資料庫，有任何新增/刪除，快取都會瞬間同步
+// 🌟 監聽貼圖資料庫，有任何新增/刪除，快取都會瞬間同步
 db.collection('stickers').orderBy('timestamp', 'desc').onSnapshot(snapshot => {
     addDbStat('read', snapshot.docChanges().length);
     cache.stickers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+});
+
+// 🌟 新增：監聽表情包資料庫，支援即時搜尋 (Autocomplete)
+db.collection('emotes').orderBy('timestamp', 'desc').onSnapshot(snapshot => {
+    addDbStat('read', snapshot.docChanges().length);
+    cache.emotes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 });
 
 module.exports = {
