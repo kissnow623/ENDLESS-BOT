@@ -11,7 +11,6 @@ module.exports = {
         console.log(`🤖 機器人登入成功：${client.user.tag}!`);
         const adminPerms = PermissionFlagsBits.Administrator.toString();
 
-        // 快取伺服器內所有的邀請連結
         client.guilds.cache.forEach(async guild => {
             try {
                 const invites = await guild.invites.fetch();
@@ -24,7 +23,6 @@ module.exports = {
             }
         });
 
-        // 🎨 貼圖系統指令
         const stickerCommands = [
             { name: '貼圖', description: '呼叫專屬動態/大型貼圖圖庫' },
             { 
@@ -46,7 +44,6 @@ module.exports = {
             }
         ];
 
-        // 🎭 🌟 新增：表情包系統指令 (支援關鍵字自動補全與批次新增)
         const emoteCommands = [
             { 
                 name: '表情包', 
@@ -65,8 +62,24 @@ module.exports = {
                 options: [ { name: '名稱', description: '要刪除的表情包名稱', type: ApplicationCommandOptionType.String, required: true } ] 
             }
         ];
+        
+        // 📈 🌟 新增物價查詢指令
+        const marketCommands = [
+            {
+                name: '查價',
+                description: '查詢 Artale 楓之股最新物價',
+                options: [
+                    {
+                        name: '物品名稱',
+                        description: '輸入要查詢的物品 (支援自動補全)',
+                        type: ApplicationCommandOptionType.String,
+                        required: true,
+                        autocomplete: true
+                    }
+                ]
+            }
+        ];
 
-        // 定義所有指令
         const echoCommands = [
             { name: '預約', description: '開啟王團預約表單', options: [{ name: '地點', type: 3, description: '請選擇預約地點', required: true, choices: [ { name: '闇黑龍王', value: '闇黑龍王' }, { name: '艾畢奈亞', value: '艾畢奈亞' }, { name: '道館', value: '道館' }, { name: '其他', value: '其他' } ] }] },
             { name: '我的紀錄', description: '查詢個人的預約統計與排單狀態' },
@@ -114,15 +127,14 @@ module.exports = {
             await client.application.commands.set([]); 
             const guild = client.guilds.cache.get(config.guildId);
             if (guild) {
-                // 🌟 這裡確保 stickerCommands 和 emoteCommands 都註冊進去了！
-                await guild.commands.set([...echoCommands, ...guildCommands, ...stickerCommands, ...emoteCommands]);
+                // 🌟 註冊所有指令 (加入 marketCommands)
+                await guild.commands.set([...echoCommands, ...guildCommands, ...stickerCommands, ...emoteCommands, ...marketCommands]);
                 console.log('✅ 所有指令已專屬註冊至 ENDLESS 伺服器，並清空全域重複指令！');
             }
         } catch (error) { 
             console.error('❌ 指令註冊失敗：', error); 
         }
 
-        // 開機掃描 Booster
         try {
             const guild = client.guilds.cache.get(config.guildId);
             if (guild) {
@@ -140,7 +152,6 @@ module.exports = {
             }
         } catch (err) { console.error('❌ 啟動掃描加成者失敗：', err); }
 
-        // 啟動 60 秒定時排程引擎
         startScheduler(client);
     }
 };
