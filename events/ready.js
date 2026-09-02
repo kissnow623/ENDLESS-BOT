@@ -24,7 +24,7 @@ module.exports = {
             }
         });
 
-        // 🎨 新增：貼圖系統指令
+        // 🎨 貼圖系統指令
         const stickerCommands = [
             { name: '貼圖', description: '呼叫專屬動態/大型貼圖圖庫' },
             { 
@@ -43,6 +43,26 @@ module.exports = {
                 description: '從資料庫中移除過期的貼圖 (僅限幹部)', 
                 default_member_permissions: adminPerms,
                 options: [ { name: '標題', description: '要刪除的貼圖名稱', type: ApplicationCommandOptionType.String, required: true } ] 
+            }
+        ];
+
+        // 🎭 🌟 新增：表情包系統指令 (支援關鍵字自動補全與批次新增)
+        const emoteCommands = [
+            { 
+                name: '表情包', 
+                description: '快速呼叫表情包 (支援關鍵字即時搜尋)', 
+                options: [{ name: '名稱', description: '輸入關鍵字搜尋表情包', type: ApplicationCommandOptionType.String, required: true, autocomplete: true }] 
+            },
+            { 
+                name: '批次新增表情包', 
+                description: '一次大量匯入多個表情包 (僅限幹部)', 
+                default_member_permissions: adminPerms 
+            },
+            { 
+                name: '刪除表情包', 
+                description: '刪除指定的表情包 (僅限幹部)', 
+                default_member_permissions: adminPerms, 
+                options: [ { name: '名稱', description: '要刪除的表情包名稱', type: ApplicationCommandOptionType.String, required: true } ] 
             }
         ];
 
@@ -94,8 +114,8 @@ module.exports = {
             await client.application.commands.set([]); 
             const guild = client.guilds.cache.get(config.guildId);
             if (guild) {
-                // 🌟 將 stickerCommands 合併進去註冊 (這裡已經為你整合好了)
-                await guild.commands.set([...echoCommands, ...guildCommands, ...stickerCommands]);
+                // 🌟 這裡確保 stickerCommands 和 emoteCommands 都註冊進去了！
+                await guild.commands.set([...echoCommands, ...guildCommands, ...stickerCommands, ...emoteCommands]);
                 console.log('✅ 所有指令已專屬註冊至 ENDLESS 伺服器，並清空全域重複指令！');
             }
         } catch (error) { 
