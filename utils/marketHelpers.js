@@ -9,22 +9,30 @@ const updateMarketData = async () => {
         const response = await fetch(apiUrl);
         const data = await response.json();
 
-        let rawArray = [];
-        // 應對各種可能的 API 回傳格式
-        if (Array.isArray(data)) rawArray = data;
-        else if (data.data && Array.isArray(data.data)) rawArray = data.data;
-        else if (data.result && Array.isArray(data.result)) rawArray = data.result;
+        // 針對該 API 特殊的 headers 與 rows 結構進行解析
+        if (data && Array.isArray(data.headers) && Array.isArray(data.rows) && data.rows.length > 0) {
+            const headers = data.headers;
+            const latestRow = data.rows[data.rows.length - 1]; // 取得最後一筆最新報價
+            const newCache = [];
 
-        if (rawArray.length > 0) {
-            marketCache = rawArray.map(item => ({
-                // 多重防呆：盡可能涵蓋所有中英文的命名可能
-                name: String(item['ItemName'] || item['物品名稱'] || item['name'] || item['Name'] || item['item'] || '未知物品'),
-                price: String(item['Price'] || item['價格'] || item['price'] || item['cost'] || '未知價格'),
-                trend: String(item['Trend'] || item['漲跌'] || item['trend'] || item['status'] || '--') 
-            }));
+            // 迴圈從 1 開始，跳過索引 0 的 'Timestamp'
+            for (let i = 1; i < headers.length; i++) {
+                const itemName = headers[i];
+                const itemPrice = latestRow[i];
+
+                if (itemName && itemPrice !== undefined && itemPrice !== null && itemPrice !== '') {
+                    newCache.push({
+                        name: String(itemName).trim(),
+                        price: String(itemPrice),
+                        trend: '--' // 此 API 未提供漲跌幅，預設為 '--'
+                    });
+                }
+            }
+
+            marketCache = newCache;
             console.log(`[📦 物價調查局] 資料更新成功！共載入 ${marketCache.length} 筆物品。`);
         } else {
-            console.log('[⚠️ 物價調查局] 成功連線，但找不到陣列資料，請確認 API 格式。');
+            console.log('[⚠️ 物價調查局] 成功連線，但找不到 headers 或 rows 結構，請確認 API 格式。');
         }
     } catch (error) {
         console.error('[❌ 物價調查局] 爬取失敗:', error);
