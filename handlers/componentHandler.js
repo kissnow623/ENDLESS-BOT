@@ -22,9 +22,14 @@ async function handleComponent(interaction, client) {
             
             if (!sticker) return interaction.update({ content: '❌ 貼圖已失效或被刪除。', embeds: [], components: [] });
             
-            await interaction.update({ content: '✅ 貼圖發送中...', embeds: [], components: [] });
+            // 🌟 防閃退優化：不再使用瞬間 deleteReply，改為延遲清除
+            await interaction.update({ content: '✅ 貼圖發送成功！', embeds: [], components: [] });
             await sendStickerViaWebhook(interaction, sticker.url, client);
-            return interaction.deleteReply();
+            
+            setTimeout(() => {
+                interaction.deleteReply().catch(() => {});
+            }, 2000);
+            return;
         }
 
         if (interaction.customId === 'cancel_sticker') {
