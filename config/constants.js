@@ -4,6 +4,9 @@ const { StringSelectMenuOptionBuilder } = require('discord.js');
 // 🌟 已設定專屬白名單：只有此伺服器 (1539475243733622794) 可以使用機器人！
 const ALLOWED_GUILDS = ['1539475243733622794']; 
 
+// 🌟 新增查價專屬頻道 ID
+const MARKET_CHANNEL_ID = '1544604459085070346';
+
 const AGENT_ROLE_MAP = {
     'default': '1541411576228093963', 
 };
@@ -157,5 +160,6 @@ module.exports = {
     welcomeMessages,
     welcomeFriendMessages,
     boosterRedCarpetMessages,
-    boostBannerImages
+    boostBannerImages,
+    MARKET_CHANNEL_ID
 };
