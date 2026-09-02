@@ -7,14 +7,55 @@ const { getTaiwanTime, updateBoard, checkIsAgent, buildAgentStatMessage, generat
 
 async function handleCommand(interaction, client) {
     const cmd = interaction.commandName;
-    const { allReservations, appSettings, stickers } = getCache(); // 🌟 這裡新增了 stickers 快取
+    const { allReservations, appSettings, stickers, emotes } = getCache(); // 🌟 這裡新增了 emotes 快取
     
     const isOwner = interaction.user.id === interaction.guild?.ownerId; 
     const hasAdminRole = interaction.member?.roles?.cache?.hasAny(...config.roles.adminRoles); 
     const hasAdminPerm = interaction.member?.permissions?.has(PermissionsBitField.Flags.Administrator); 
 
     // ------------------------------------------
-    // 🎨 【貼圖系統指令區】(全新加入)
+    // 🎭 【表情包系統指令區】(🌟 全新加入)
+    // ------------------------------------------
+    if (['表情包', '批次新增表情包', '刪除表情包'].includes(cmd)) {
+        
+        if (cmd === '批次新增表情包') {
+            if (!isOwner && !hasAdminRole && !hasAdminPerm) return interaction.reply({ content: '❌ 僅限幹部使用。', flags: MessageFlags.Ephemeral });
+            const modal = new ModalBuilder().setCustomId('modal_batch_emotes').setTitle('批次新增表情包');
+            const input = new TextInputBuilder()
+                .setCustomId('emotes_data')
+                .setLabel("格式：名稱,網址,emoji(選填),描述(選填)")
+                .setStyle(TextInputStyle.Paragraph)
+                .setPlaceholder("開心,https://i.imgur.com/xxx.png,😄,笑死\n難過,https://i.imgur.com/yyy.gif,😭,想哭")
+                .setRequired(true);
+            modal.addComponents(new ActionRowBuilder().addComponents(input));
+            return interaction.showModal(modal);
+        }
+
+        if (cmd === '刪除表情包') {
+            if (!isOwner && !hasAdminRole && !hasAdminPerm) return interaction.reply({ content: '❌ 僅限幹部使用。', flags: MessageFlags.Ephemeral });
+            const name = interaction.options.getString('名稱');
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+            await db.collection('emotes').doc(name).delete();
+            addDbStat('write');
+            return interaction.editReply(`🗑️ **表情包已刪除：** \`${name}\``);
+        }
+
+        if (cmd === '表情包') {
+            const emoteName = interaction.options.getString('名稱');
+            const emote = (emotes || []).find(e => e.name === emoteName);
+            
+            if (!emote) return interaction.reply({ content: '❌ 找不到該表情包，請確認關鍵字是否正確！', flags: MessageFlags.Ephemeral });
+            
+            // 🌟 找到圖後，直接使用 Webhook 一秒發出，免去預覽室步驟！
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+            const { sendStickerViaWebhook } = require('../utils/stickerHelpers');
+            await sendStickerViaWebhook(interaction, emote.url, client);
+            return interaction.deleteReply();
+        }
+    }
+
+    // ------------------------------------------
+    // 🎨 【貼圖系統指令區】
     // ------------------------------------------
     if (['貼圖', '新增貼圖', '刪除貼圖'].includes(cmd)) {
         
