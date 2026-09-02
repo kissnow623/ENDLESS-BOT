@@ -1,21 +1,48 @@
 // handlers/commandHandler.js
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, PermissionsBitField, MessageFlags } = require('discord.js');
 const { db, addDbStat, getCache } = require('../utils/firebase');
-const { config, getAgentRoleId } = require('../config/constants');
+const { config, getAgentRoleId, MARKET_CHANNEL_ID } = require('../config/constants');
 const { generateMemberLeaderboard, generateFriendLeaderboard, updateNickname } = require('../utils/guildHelpers');
 const { getTaiwanTime, updateBoard, checkIsAgent, buildAgentStatMessage, generateScheduleEmbed, broadcastToManagementAreas } = require('../utils/echoHelpers');
-const { sendStickerViaWebhook } = require('../utils/stickerHelpers'); // 🌟 引入 Webhook 工具
+const { sendStickerViaWebhook } = require('../utils/stickerHelpers');
+const { getMarketItem } = require('../utils/marketHelpers'); // 🌟 引入物價查詢
 
 async function handleCommand(interaction, client) {
     const cmd = interaction.commandName;
-    const { allReservations, appSettings, stickers, emotes } = getCache(); // 🌟 這裡新增了 emotes 快取
+    const { allReservations, appSettings, stickers, emotes } = getCache();
     
     const isOwner = interaction.user.id === interaction.guild?.ownerId; 
     const hasAdminRole = interaction.member?.roles?.cache?.hasAny(...config.roles.adminRoles); 
     const hasAdminPerm = interaction.member?.permissions?.has(PermissionsBitField.Flags.Administrator); 
 
     // ------------------------------------------
-    // 🎭 【表情包系統指令區】(🌟 全新加入)
+    // 📈 【物價查詢系統指令區】(🌟 全新加入)
+    // ------------------------------------------
+    if (cmd === '查價') {
+        if (interaction.channelId !== MARKET_CHANNEL_ID) {
+            return interaction.reply({ 
+                content: `❌ 查價功能請移駕至 <#${MARKET_CHANNEL_ID}> 頻道使用喔！`, 
+                flags: MessageFlags.Ephemeral 
+            });
+        }
+
+        const itemName = interaction.options.getString('物品名稱');
+        const itemData = getMarketItem(itemName);
+
+        if (!itemData) {
+            return interaction.reply({ 
+                content: `🔍 找不到 **${itemName}** 的報價，請確認名稱是否正確！`, 
+                flags: MessageFlags.Ephemeral 
+            });
+        }
+
+        return interaction.reply({
+            content: `📊 **${itemData.name}**\n💰 最新價格：\`${itemData.price}\`\n📈 漲跌趨勢：${itemData.trend}`
+        });
+    }
+
+    // ------------------------------------------
+    // 🎭 【表情包系統指令區】
     // ------------------------------------------
     if (['表情包', '批次新增表情包', '刪除表情包'].includes(cmd)) {
         
@@ -47,7 +74,6 @@ async function handleCommand(interaction, client) {
             
             if (!emote) return interaction.reply({ content: '❌ 找不到該表情包，請確認關鍵字是否正確！', flags: MessageFlags.Ephemeral });
             
-            // 🌟 防閃退優化：先正常回覆，再呼叫 Webhook，最後延遲刪除提示避免卡死
             await interaction.reply({ content: `✅ 正在為您發送表情包：**${emote.name}**...`, flags: MessageFlags.Ephemeral });
             await sendStickerViaWebhook(interaction, emote.url, client);
             
@@ -92,11 +118,10 @@ async function handleCommand(interaction, client) {
             }
 
             try {
-                // 取前 25 個貼圖 (Discord 選單限制)
                 const options = stickers.slice(0, 25).map(s => {
                     const opt = new StringSelectMenuOptionBuilder().setLabel(s.name).setValue(s.name);
                     if (s.description) opt.setDescription(s.description);
-                    if (s.emoji) opt.setEmoji(s.emoji); // 防錯機制：錯誤Emoji會在此報錯
+                    if (s.emoji) opt.setEmoji(s.emoji); 
                     return opt;
                 });
 
@@ -105,8 +130,8 @@ async function handleCommand(interaction, client) {
                 );
                 return interaction.reply({ content: '🖼️ **打開專屬貼圖圖庫：**', components: [row], flags: MessageFlags.Ephemeral });
             } catch (err) {
-                console.error("選單生成錯誤 (可能是 Emoji 格式不對):", err);
-                return interaction.reply({ content: '❌ **貼圖選單生成失敗！**\n可能是有貼圖的「表情符號」欄位填寫了無效的文字，請管理員檢查資料庫。', flags: MessageFlags.Ephemeral });
+                console.error("選單生成錯誤:", err);
+                return interaction.reply({ content: '❌ **貼圖選單生成失敗！**\n可能是表情符號無效。', flags: MessageFlags.Ephemeral });
             }
         }
     }
