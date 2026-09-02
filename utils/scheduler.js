@@ -7,10 +7,19 @@ const {
     bumpManagementMessages, syncManagementMessages, broadcastToManagementAreas, updateBoard 
 } = require('./echoHelpers');
 const { generateMemberLeaderboard, generateFriendLeaderboard } = require('./guildHelpers');
+const { updateMarketData } = require('./marketHelpers'); // 🌟 引入爬蟲排程
 
 let lastLeaderboardMonth = -1;
 
 function startScheduler(client) {
+    // 🌟 機器人開機時先抓取一次最新物價
+    updateMarketData();
+
+    // 🌟 設定每 2 小時爬取一次更新 (減少對網站負擔)
+    setInterval(() => {
+        updateMarketData();
+    }, 2 * 60 * 60 * 1000); 
+
     setInterval(async () => {
         const now = Date.now();
         const twTime = new Date(now + 8 * 3600000);
