@@ -24,6 +24,28 @@ module.exports = {
             }
         });
 
+        // 🎨 新增：貼圖系統指令
+        const stickerCommands = [
+            { name: '貼圖', description: '呼叫專屬動態/大型貼圖圖庫' },
+            { 
+                name: '新增貼圖', 
+                description: '新增一張伺服器專屬貼圖至資料庫 (僅限幹部)', 
+                default_member_permissions: adminPerms,
+                options: [
+                    { name: '標題', description: '貼圖的名稱 (會顯示在選單上)', type: ApplicationCommandOptionType.String, required: true },
+                    { name: '圖片網址', description: '貼圖的直接圖片網址 (建議以 png, jpg, gif 結尾)', type: ApplicationCommandOptionType.String, required: true },
+                    { name: '描述', description: '貼圖的小字說明 (選填)', type: ApplicationCommandOptionType.String, required: false },
+                    { name: '表情符號', description: '選單旁邊的 Emoji圖示 (選填，直接貼上圖案即可)', type: ApplicationCommandOptionType.String, required: false }
+                ] 
+            },
+            { 
+                name: '刪除貼圖', 
+                description: '從資料庫中移除過期的貼圖 (僅限幹部)', 
+                default_member_permissions: adminPerms,
+                options: [ { name: '標題', description: '要刪除的貼圖名稱', type: ApplicationCommandOptionType.String, required: true } ] 
+            }
+        ];
+
         // 定義所有指令
         const echoCommands = [
             { name: '預約', description: '開啟王團預約表單', options: [{ name: '地點', type: 3, description: '請選擇預約地點', required: true, choices: [ { name: '闇黑龍王', value: '闇黑龍王' }, { name: '艾畢奈亞', value: '艾畢奈亞' }, { name: '道館', value: '道館' }, { name: '其他', value: '其他' } ] }] },
@@ -72,7 +94,8 @@ module.exports = {
             await client.application.commands.set([]); 
             const guild = client.guilds.cache.get(config.guildId);
             if (guild) {
-                await guild.commands.set([...echoCommands, ...guildCommands]);
+                // 🌟 將 stickerCommands 合併進去註冊 (這裡已經為你整合好了)
+                await guild.commands.set([...echoCommands, ...guildCommands, ...stickerCommands]);
                 console.log('✅ 所有指令已專屬註冊至 ENDLESS 伺服器，並清空全域重複指令！');
             }
         } catch (error) { 
