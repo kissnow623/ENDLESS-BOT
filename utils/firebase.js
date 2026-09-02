@@ -1,5 +1,4 @@
 // utils/firebase.js
-// 🌟 修正：改用 Firebase 最新版的模組化引入方式
 const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 
@@ -17,7 +16,6 @@ try {
     process.exit(1); 
 }
 
-// 🔥 修正：使用最新 getApps() 來防止重複初始化，並使用 cert() 憑證
 try {
     if (getApps().length === 0) {
         initializeApp({ credential: cert(serviceAccount) });
@@ -27,17 +25,12 @@ try {
     console.error("❌ Firebase 初始化失敗：", error);
 }
 
-// 取得資料庫實體
 const db = getFirestore();
 
-// 💡 巧思：製作一個相容舊版語法的 admin 物件，這樣其他檔案就不需要跟著大改了！
 const adminCompat = {
-    firestore: {
-        FieldValue: FieldValue
-    }
+    firestore: { FieldValue: FieldValue }
 };
 
-// --- 讀寫計數器 ---
 let dbStats = { reads: 0, writes: 0, resetDay: new Date(Date.now() + 8 * 3600000).getUTCDate() };
 
 function addDbStat(type, count = 1) {
@@ -49,28 +42,33 @@ function addDbStat(type, count = 1) {
     if (type === 'write') dbStats.writes += count;
 }
 
-// --- 全域資料快取 (迴響預約用) ---
+// --- 全域資料快取 ---
 const cache = {
     allReservations: [],
-    appSettings: {}
+    appSettings: {},
+    stickers: [] // 🌟 新增：存放所有貼圖的快取陣列
 };
 
-// 監聽近期訂單
 const ninetyDaysAgo = Date.now() - 90 * 24 * 60 * 60 * 1000;
 db.collection('reservations').where('timestamp', '>=', ninetyDaysAgo).onSnapshot(snapshot => {
     addDbStat('read', snapshot.docChanges().length); 
     cache.allReservations = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 });
 
-// 監聽設定檔
 db.collection('settings').onSnapshot(snapshot => {
     addDbStat('read', snapshot.docChanges().length);
     snapshot.docs.forEach(doc => { cache.appSettings[doc.id] = doc.data(); });
 });
 
+// 🌟 新增：監聽貼圖資料庫，有任何新增/刪除，快取都會瞬間同步
+db.collection('stickers').orderBy('timestamp', 'desc').onSnapshot(snapshot => {
+    addDbStat('read', snapshot.docChanges().length);
+    cache.stickers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+});
+
 module.exports = {
     db,
-    admin: adminCompat, // 輸出相容套件，讓其他檔案的 admin.firestore.FieldValue 繼續生效
+    admin: adminCompat,
     addDbStat,
     getDbStats: () => dbStats,
     getCache: () => cache
