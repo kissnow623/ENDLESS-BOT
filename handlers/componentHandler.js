@@ -12,8 +12,10 @@ async function handleComponent(interaction, client) {
     // ===================================
     // 👉 Buttons (按鈕互動)
     // ===================================
-            // --- 🎨 貼圖系統按鈕 ---
-    if (interaction.customId.startsWith('send_sticker_')) {
+    if (interaction.isButton()) {
+        
+        // --- 🎨 貼圖系統按鈕 ---
+        if (interaction.customId.startsWith('send_sticker_')) {
             const stickerName = interaction.customId.replace('send_sticker_', '');
             const { stickers } = getCache();
             const sticker = stickers.find(s => s.name === stickerName);
@@ -28,8 +30,8 @@ async function handleComponent(interaction, client) {
         if (interaction.customId === 'cancel_sticker') {
             return interaction.update({ content: '🗑️ 已取消發送。', embeds: [], components: [] });
         }
-    if (interaction.isButton()) {
-        
+
+        // --- 原有公會/預約按鈕 ---
         if (interaction.customId === 'btn_member' || interaction.customId === 'btn_friend') {
             const isMember = interaction.customId === 'btn_member';
             const selectMenu = new StringSelectMenuBuilder()
@@ -261,7 +263,6 @@ async function handleComponent(interaction, client) {
                         const payload = buildTicketPayload(docId, data);
                         await syncManagementMessages(client, data.ticketMsgs, payload.embeds[0], payload.components);
 
-                        // 🌟 新增：如果訂單已經是「可結案狀態」，專員接手時自動補發結案私訊！
                         let extraMsg = '';
                         if (data.postChecked) {
                             try {
@@ -379,7 +380,9 @@ async function handleComponent(interaction, client) {
     // ===================================
     // 👉 C. String Select Menus (下拉式選單)
     // ===================================
-            // --- 🎨 貼圖系統選單預覽 ---
+    else if (interaction.isStringSelectMenu()) {
+        
+        // --- 🎨 貼圖系統選單預覽 ---
         if (interaction.customId === 'select_sticker') {
             const stickerName = interaction.values[0];
             const { stickers } = getCache();
@@ -398,9 +401,8 @@ async function handleComponent(interaction, client) {
             );
             return interaction.update({ content: '', embeds: [embed], components: [row] });
         }
-    
-    else if (interaction.isStringSelectMenu()) {
-        
+
+        // --- 原有選單處理 ---
         if (interaction.customId === 'select_user_action') {
             const action = interaction.values[0];
             
