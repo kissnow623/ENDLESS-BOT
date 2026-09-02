@@ -379,6 +379,26 @@ async function handleComponent(interaction, client) {
     // ===================================
     // 👉 C. String Select Menus (下拉式選單)
     // ===================================
+            // --- 🎨 貼圖系統選單預覽 ---
+        if (interaction.customId === 'select_sticker') {
+            const stickerName = interaction.values[0];
+            const { stickers } = getCache();
+            const sticker = stickers.find(s => s.name === stickerName);
+            
+            if (!sticker) return interaction.update({ content: '❌ 找不到該貼圖。', components: [] });
+            
+            const embed = new EmbedBuilder()
+                .setTitle(`👀 預覽貼圖：${sticker.name}`)
+                .setColor(0x0099FF)
+                .setImage(sticker.url);
+                
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`send_sticker_${sticker.name}`).setLabel('✅ 確認發送').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId('cancel_sticker').setLabel('❌ 取消').setStyle(ButtonStyle.Danger)
+            );
+            return interaction.update({ content: '', embeds: [embed], components: [row] });
+        }
+    
     else if (interaction.isStringSelectMenu()) {
         
         if (interaction.customId === 'select_user_action') {
