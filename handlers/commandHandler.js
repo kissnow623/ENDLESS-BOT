@@ -4,6 +4,7 @@ const { db, addDbStat, getCache } = require('../utils/firebase');
 const { config, getAgentRoleId } = require('../config/constants');
 const { generateMemberLeaderboard, generateFriendLeaderboard, updateNickname } = require('../utils/guildHelpers');
 const { getTaiwanTime, updateBoard, checkIsAgent, buildAgentStatMessage, generateScheduleEmbed, broadcastToManagementAreas } = require('../utils/echoHelpers');
+const { sendStickerViaWebhook } = require('../utils/stickerHelpers'); // 🌟 引入 Webhook 工具
 
 async function handleCommand(interaction, client) {
     const cmd = interaction.commandName;
@@ -46,11 +47,14 @@ async function handleCommand(interaction, client) {
             
             if (!emote) return interaction.reply({ content: '❌ 找不到該表情包，請確認關鍵字是否正確！', flags: MessageFlags.Ephemeral });
             
-            // 🌟 找到圖後，直接使用 Webhook 一秒發出，免去預覽室步驟！
-            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-            const { sendStickerViaWebhook } = require('../utils/stickerHelpers');
+            // 🌟 防閃退優化：先正常回覆，再呼叫 Webhook，最後延遲刪除提示避免卡死
+            await interaction.reply({ content: `✅ 正在為您發送表情包：**${emote.name}**...`, flags: MessageFlags.Ephemeral });
             await sendStickerViaWebhook(interaction, emote.url, client);
-            return interaction.deleteReply();
+            
+            setTimeout(() => {
+                interaction.deleteReply().catch(() => {});
+            }, 2000);
+            return;
         }
     }
 
@@ -87,18 +91,23 @@ async function handleCommand(interaction, client) {
                 return interaction.reply({ content: '❌ 目前圖庫空空如也，請管理員使用 `/新增貼圖` 來建立吧！', flags: MessageFlags.Ephemeral });
             }
 
-            // 取前 25 個貼圖 (Discord 選單限制)
-            const options = stickers.slice(0, 25).map(s => {
-                const opt = new StringSelectMenuOptionBuilder().setLabel(s.name).setValue(s.name);
-                if (s.description) opt.setDescription(s.description);
-                if (s.emoji) opt.setEmoji(s.emoji);
-                return opt;
-            });
+            try {
+                // 取前 25 個貼圖 (Discord 選單限制)
+                const options = stickers.slice(0, 25).map(s => {
+                    const opt = new StringSelectMenuOptionBuilder().setLabel(s.name).setValue(s.name);
+                    if (s.description) opt.setDescription(s.description);
+                    if (s.emoji) opt.setEmoji(s.emoji); // 防錯機制：錯誤Emoji會在此報錯
+                    return opt;
+                });
 
-            const row = new ActionRowBuilder().addComponents(
-                new StringSelectMenuBuilder().setCustomId('select_sticker').setPlaceholder('請選擇要發送的貼圖...').addOptions(options)
-            );
-            return interaction.reply({ content: '🖼️ **打開專屬貼圖圖庫：**', components: [row], flags: MessageFlags.Ephemeral });
+                const row = new ActionRowBuilder().addComponents(
+                    new StringSelectMenuBuilder().setCustomId('select_sticker').setPlaceholder('請選擇要發送的貼圖...').addOptions(options)
+                );
+                return interaction.reply({ content: '🖼️ **打開專屬貼圖圖庫：**', components: [row], flags: MessageFlags.Ephemeral });
+            } catch (err) {
+                console.error("選單生成錯誤 (可能是 Emoji 格式不對):", err);
+                return interaction.reply({ content: '❌ **貼圖選單生成失敗！**\n可能是有貼圖的「表情符號」欄位填寫了無效的文字，請管理員檢查資料庫。', flags: MessageFlags.Ephemeral });
+            }
         }
     }
 
