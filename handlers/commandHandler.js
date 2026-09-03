@@ -256,13 +256,14 @@ async function handleCommand(interaction, client) {
                         totalValue += qty * currentPrice;
                     }
                 }
-                ranks.push({ name: data.username || '未知股神', value: totalValue });
+                ranks.push({ id: doc.id, value: totalValue });
             });
             
             ranks.sort((a, b) => b.value - a.value);
             let desc = ranks.slice(0, 10).map((r, i) => {
                 let rankIcon = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `**${i+1}.**`;
-                return `${rankIcon} **${r.name}** ➔ 淨值: \`${r.value.toFixed(2)} 萬\``;
+                // 🌟 使用 <@ID> 讓 Discord 系統自動轉換為使用者的真實頭像與名稱
+                return `${rankIcon} <@${r.id}> ➔ 淨值: \`${r.value.toFixed(2)} 萬\``;
             }).join('\n\n');
             
             const embed = new EmbedBuilder().setColor(0x10B981).setTitle('🏆 楓之谷巴菲特：虛擬炒股淨值排行榜').setDescription(desc);
@@ -303,7 +304,9 @@ async function handleCommand(interaction, client) {
                 }
 
                 const originalEmbed = EmbedBuilder.from(interaction.message.embeds[0]);
-                if (cId.startsWith('publish_arbitrage_')) originalEmbed.setTitle(`🎯 折溢排行 (由 ${interaction.user.username} 分享)`);
+                const tfText = isGuildMember ? "48H" : "24H";
+
+                if (cId.startsWith('publish_arbitrage_')) originalEmbed.setTitle(`🎯 折溢排行 (${tfText}內變化) (由 ${interaction.user.username} 分享)`);
                 if (cId.startsWith('publish_cash_')) originalEmbed.setTitle(`💳 課金最佳化轉換試算 (由 ${interaction.user.username} 分享)`);
                 
                 try {
@@ -345,8 +348,9 @@ async function handleCommand(interaction, client) {
                 let pText = validItems.slice(0, 5).map((i, idx) => `**${idx+1}.** ${i.name} \n└ 📈 \`+${i.rawTrend.toFixed(2)}%\` (${i.price})`).join('\n\n');
                 let dText = validItems.slice(-5).reverse().map((i, idx) => `**${idx+1}.** ${i.name} \n└ 📉 \`${i.rawTrend.toFixed(2)}%\` (${i.price})`).join('\n\n');
 
-                const embed = new EmbedBuilder().setColor(0x3B82F6).setTitle('🎯 折溢排行')
-                    .addFields({ name: '🔥 【溢價急漲區】(建議出售)', value: pText || '無', inline: true }, { name: '🧊 【折價超跌區】(建議掃貨)', value: dText || '無', inline: true });
+                const tfText = isGuildMember ? "48H" : "24H";
+                const embed = new EmbedBuilder().setColor(0x3B82F6).setTitle(`🎯 折溢排行 (${tfText}內變化)`)
+                    .addFields({ name: `🔥 【溢價急漲區】(建議出售)`, value: pText || '無', inline: true }, { name: `🧊 【折價超跌區】(建議掃貨)`, value: dText || '無', inline: true });
 
                 const publishBtn = new ActionRowBuilder();
                 if (isGuildMember) publishBtn.addComponents(new ButtonBuilder().setCustomId('publish_arbitrage_pubG_0').setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success));
@@ -505,7 +509,8 @@ async function handleCommand(interaction, client) {
                     return `**${i.name}**\n└ ${icon} \`${i.trend}\` (現價: ${i.price})`;
                 }).join('\n\n');
 
-                const embed = new EmbedBuilder().setColor(0xEC4899).setTitle('🐳 巨鯨大戶異動雷達 (15% 振幅監控)').setDescription(desc).setFooter({ text: '※ 背景排程警報已啟動監控', iconURL: client.user.displayAvatarURL() });
+                const tfText = isGuildMember ? "48H" : "24H";
+                const embed = new EmbedBuilder().setColor(0xEC4899).setTitle(`🐳 巨鯨大戶異動雷達 (15% 振幅, ${tfText}內變化)`).setDescription(desc).setFooter({ text: '※ 背景排程警報已啟動監控', iconURL: client.user.displayAvatarURL() });
                 return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
             }
 
@@ -641,7 +646,7 @@ async function handleCommand(interaction, client) {
         }
 
         if (interaction.customId.startsWith('modal_paper_')) {
-            const isBuy = interaction.customId.includes('buy');
+            const isBuy = interaction.customId.includes('買入');
             const query = (interaction.fields.getTextInputValue('item_name') || '').toLowerCase();
             const qty = parseInt(interaction.fields.getTextInputValue('qty'));
             
@@ -762,7 +767,8 @@ async function handleCommand(interaction, client) {
         const whales = allItems.filter(i => Math.abs(i.rawTrend) >= 15 && i.rawPrice > 0).sort((a, b) => Math.abs(b.rawTrend) - Math.abs(a.rawTrend));
         if (whales.length === 0) return interaction.reply({ content: '🌊 目前市場風平浪靜，無明顯巨鯨活動。', flags: MessageFlags.Ephemeral });
         let desc = whales.map(i => `**${i.name}**\n└ ${i.rawTrend > 0 ? '🚀 【大戶掃貨暴漲】' : '🩸 【大戶倒貨暴跌】'} \`${i.trend}\` (現價: ${i.price})`).join('\n\n');
-        const embed = new EmbedBuilder().setColor(0xEC4899).setTitle('🐳 巨鯨大戶異動雷達 (15% 振幅)').setDescription(desc);
+        const tfText = isGuildMember ? "48H" : "24H";
+        const embed = new EmbedBuilder().setColor(0xEC4899).setTitle(`🐳 巨鯨大戶異動雷達 (15% 振幅監控, ${tfText}內變化)`).setDescription(desc);
         return interaction.reply({ embeds: [embed] });
     }
 
@@ -791,7 +797,8 @@ async function handleCommand(interaction, client) {
             let premiumText = premiumItems.map((item, i) => `**${i+1}.** ${item.name} \n└ 📈 \`+${item.rawTrend.toFixed(2)}%\` (報價: ${item.price})`).join('\n\n');
             let discountText = discountItems.map((item, i) => `**${i+1}.** ${item.name} \n└ 📉 \`${item.rawTrend.toFixed(2)}%\` (報價: ${item.price})`).join('\n\n');
 
-            const embed = new EmbedBuilder().setColor(0x3B82F6).setTitle('🎯 折溢排行')
+            const tfText = isGuildMember ? "48H" : "24H";
+            const embed = new EmbedBuilder().setColor(0x3B82F6).setTitle(`🎯 折溢排行 (${tfText}內變化)`)
                 .addFields(
                     { name: '🔥 【溢價急漲區】(建議出售)', value: premiumText || '目前無顯著急漲物品', inline: true },
                     { name: '🧊 【折價超跌區】(建議掃貨)', value: discountText || '目前無顯著超跌物品', inline: true }
