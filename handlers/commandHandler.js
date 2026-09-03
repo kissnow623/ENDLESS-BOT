@@ -1,7 +1,7 @@
 // handlers/commandHandler.js
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, PermissionsBitField, MessageFlags } = require('discord.js');
 const { db, addDbStat, getCache } = require('../utils/firebase');
-const { config, getAgentRoleId, MARKET_CHANNEL_ID } = require('../config/constants');
+const { config, getAgentRoleId, MARKET_CHANNEL_ID } = require('../utils/constants');
 const { generateMemberLeaderboard, generateFriendLeaderboard, updateNickname } = require('../utils/guildHelpers');
 const { getTaiwanTime, updateBoard, checkIsAgent, buildAgentStatMessage, generateScheduleEmbed, broadcastToManagementAreas } = require('../utils/echoHelpers');
 const { sendStickerViaWebhook } = require('../utils/stickerHelpers');
@@ -40,6 +40,9 @@ async function handleCommand(interaction, client) {
 
             const action = interaction.values[0];
 
+            // 🌟 解決下拉選單卡住無法連點的問題：在背景刷新原本的訊息元件
+            interaction.message.edit({ components: interaction.message.components }).catch(() => {});
+
             if (action === 'market_price') {
                 const modal = new ModalBuilder().setCustomId('modal_market_price').setTitle('🔍 即時查價系統 (支援關鍵字)');
                 modal.addComponents(new ActionRowBuilder().addComponents(
@@ -58,10 +61,9 @@ async function handleCommand(interaction, client) {
                 const embed = new EmbedBuilder().setColor(0x3B82F6).setTitle('🎯 市場行情套利雷達')
                     .addFields({ name: '🔥 【溢價急漲區】(建議出售)', value: pText || '無', inline: true }, { name: '🧊 【折價超跌區】(建議掃貨)', value: dText || '無', inline: true });
 
-                const publishBtn = new ActionRowBuilder().addComponents(
-                    new ButtonBuilder().setCustomId('arbitrage_pubG_0').setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success),
-                    new ButtonBuilder().setCustomId('arbitrage_pubF_0').setLabel('📢 發布至親友閒聊').setStyle(ButtonStyle.Primary)
-                );
+                const publishBtn = new ActionRowBuilder();
+                if (isGuildMember) publishBtn.addComponents(new ButtonBuilder().setCustomId('arbitrage_pubG_0').setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success));
+                publishBtn.addComponents(new ButtonBuilder().setCustomId('arbitrage_pubF_0').setLabel('📢 發布至親友閒聊').setStyle(ButtonStyle.Primary));
 
                 return interaction.reply({ embeds: [embed], components: [publishBtn], flags: MessageFlags.Ephemeral });
             }
@@ -116,14 +118,13 @@ async function handleCommand(interaction, client) {
             return interaction.reply({ content: '🛠️ 此功能正在連線調整中，即將開放！', flags: MessageFlags.Ephemeral });
         }
 
-        // 2️⃣ 處理查價結果的二次下拉選單 (智能模糊搜尋結果)
+        // 2️⃣ 處理查價結果的二次下拉選單 (智能模糊搜尋結果選擇)
         if (interaction.customId === 'select_market_price_result') {
             const itemName = interaction.values[0];
             const itemData = getMarketItem(itemName);
             
             if (!itemData) return interaction.reply({ content: `🔍 找不到 **${itemName}** 的報價！`, flags: MessageFlags.Ephemeral });
 
-            // 🌟 權限判定圖表 (自己看的時候，依據身分組判定)
             const displayChartUrl = isGuildMember ? itemData.chartUrl : (itemData.chartUrl1Day || itemData.chartUrl);
             const viewLevelText = isGuildMember ? '全區間線圖 (公會權限)' : '24小時線圖 (親友權限)';
 
@@ -132,29 +133,31 @@ async function handleCommand(interaction, client) {
                 .setImage(displayChartUrl).setTimestamp()
                 .setFooter({ text: `價格走勢 [${viewLevelText}] • 資料來源: Artale 楓之股`, iconURL: client.user.displayAvatarURL() });
 
-            const btnRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`price_pubG_${itemData.name}`).setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success),
+            const btnRow = new ActionRowBuilder();
+            if (isGuildMember) btnRow.addComponents(new ButtonBuilder().setCustomId(`price_pubG_${itemData.name}`).setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success));
+            btnRow.addComponents(
                 new ButtonBuilder().setCustomId(`price_pubF_${itemData.name}`).setLabel('📢 發布至親友閒聊').setStyle(ButtonStyle.Primary),
                 new ButtonBuilder().setLabel('🌐 網頁查看').setStyle(ButtonStyle.Link).setURL('https://artalestock.netlify.app/') 
             );
 
-            // 直接更新掉剛才的下拉選單訊息
             return interaction.update({ content: '✅ 查詢成功！', embeds: [embed], components: [btnRow] });
         }
     }
 
     if (interaction.isModalSubmit()) {
         if (interaction.customId === 'modal_market_price') {
-            const query = interaction.fields.getTextInputValue('item_name');
-            const results = searchMarketItems(query);
+            const query = interaction.fields.getTextInputValue('item_name').toLowerCase();
+            
+            const allItems = getAllMarketItems();
+            const results = allItems.filter(item => item.name.toLowerCase().includes(query));
             
             if (results.length === 0) return interaction.reply({ content: `🔍 找不到包含 **${query}** 的任何物品報價！`, flags: MessageFlags.Ephemeral });
             
-            // 🌟 智能兩段式搜尋邏輯：如果找到超過 1 個，回傳下拉選單讓使用者選！
             if (results.length > 1) {
-                const options = results.slice(0, 25).map(r => 
-                    new StringSelectMenuOptionBuilder().setLabel(r.name).setValue(r.name).setDescription(`目前報價: ${r.price}`)
-                );
+                const options = results.slice(0, 25).map(r => {
+                    let desc = r.price || '無報價';
+                    return new StringSelectMenuOptionBuilder().setLabel(r.name).setValue(r.name).setDescription(`目前報價: ${desc}`);
+                });
                 
                 const dropdownRow = new ActionRowBuilder().addComponents(
                     new StringSelectMenuBuilder().setCustomId('select_market_price_result').setPlaceholder('找到多個結果，請下拉選擇精確物品...').addOptions(options)
@@ -163,7 +166,6 @@ async function handleCommand(interaction, client) {
                 return interaction.reply({ content: `🔍 找到 **${results.length}** 個包含「${query}」的物品，請從下方選單點擊查看：`, components: [dropdownRow], flags: MessageFlags.Ephemeral });
             }
 
-            // 如果只有剛好 1 個結果，直接印出來
             const itemData = results[0];
             const displayChartUrl = isGuildMember ? itemData.chartUrl : (itemData.chartUrl1Day || itemData.chartUrl);
             const viewLevelText = isGuildMember ? '全區間線圖 (公會權限)' : '24小時線圖 (親友權限)';
@@ -173,8 +175,9 @@ async function handleCommand(interaction, client) {
                 .setImage(displayChartUrl).setTimestamp()
                 .setFooter({ text: `價格走勢 [${viewLevelText}] • 資料來源: Artale 楓之股`, iconURL: client.user.displayAvatarURL() });
 
-            const btnRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`price_pubG_${itemData.name}`).setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success),
+            const btnRow = new ActionRowBuilder();
+            if (isGuildMember) btnRow.addComponents(new ButtonBuilder().setCustomId(`price_pubG_${itemData.name}`).setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success));
+            btnRow.addComponents(
                 new ButtonBuilder().setCustomId(`price_pubF_${itemData.name}`).setLabel('📢 發布至親友閒聊').setStyle(ButtonStyle.Primary),
                 new ButtonBuilder().setLabel('🌐 網頁查看').setStyle(ButtonStyle.Link).setURL('https://artalestock.netlify.app/') 
             );
@@ -212,15 +215,13 @@ async function handleCommand(interaction, client) {
 
             const embed = new EmbedBuilder().setColor(0xF59E0B).setTitle('💳 台幣 (TWD) ➡️ 楓幣 最佳化轉換試算').setDescription(descText);
             
-            const btnRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`cash_pubG_0`).setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId(`cash_pubF_0`).setLabel('📢 發布至親友閒聊').setStyle(ButtonStyle.Primary)
-            );
+            const btnRow = new ActionRowBuilder();
+            if (isGuildMember) btnRow.addComponents(new ButtonBuilder().setCustomId(`cash_pubG_0`).setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success));
+            btnRow.addComponents(new ButtonBuilder().setCustomId(`cash_pubF_0`).setLabel('📢 發布至親友閒聊').setStyle(ButtonStyle.Primary));
 
             return interaction.reply({ embeds: [embed], components: [btnRow], flags: MessageFlags.Ephemeral });
         }
 
-        // 🌟 正式連線資料庫：寫入警報設定
         if (interaction.customId === 'modal_market_alert') {
             const item = interaction.fields.getTextInputValue('item_name');
             const price = interaction.fields.getTextInputValue('target_price');
@@ -239,7 +240,6 @@ async function handleCommand(interaction, client) {
         }
     }
 
-    // 🌟 雙按鈕智慧路由發布系統
     if (interaction.isButton() && interaction.customId) {
         const cId = interaction.customId;
         
@@ -251,7 +251,6 @@ async function handleCommand(interaction, client) {
             const targetChannel = await client.channels.fetch(targetChannelId).catch(() => null);
             if (!targetChannel) return interaction.reply({ content: `❌ 找不到目標頻道 (${targetChannelId})，無法發布。`, flags: MessageFlags.Ephemeral });
 
-            // 處理查價發布 (需重抓資料)
             if (cId.startsWith('price_')) {
                 const parts = cId.split('_'); 
                 const itemName = parts.slice(2).join('_');
@@ -259,7 +258,6 @@ async function handleCommand(interaction, client) {
                 
                 if (!itemData) return interaction.reply({ content: '資料已過期，無法發布。', flags: MessageFlags.Ephemeral });
 
-                // 🌟 發布圖表分級邏輯：發到公會頻道給全圖，發到親友頻道給1日圖
                 const displayChartUrl = isGuildChannel ? itemData.chartUrl : (itemData.chartUrl1Day || itemData.chartUrl);
                 const viewLevelText = isGuildChannel ? '全區間線圖 (公會權限)' : '24小時線圖 (親友權限)';
 
@@ -272,7 +270,6 @@ async function handleCommand(interaction, client) {
                 return interaction.update({ content: `✅ 已成功將查價資訊分享至 ${channelName}！`, components: [] });
             }
 
-            // 處理其他系統發布 (直接轉傳原 Embed)
             if (cId.startsWith('arbitrage_') || cId.startsWith('cash_') || cId.startsWith('scroll_')) {
                 const originalEmbed = EmbedBuilder.from(interaction.message.embeds[0]);
                 
@@ -321,8 +318,9 @@ async function handleCommand(interaction, client) {
                 .setFooter({ text: `價格走勢 [${viewLevelText}] • 資料來源: Artale 楓之股`, iconURL: client.user.displayAvatarURL() })
                 .setTimestamp();
 
-            const btnRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`price_pubG_${itemData.name}`).setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success),
+            const btnRow = new ActionRowBuilder();
+            if (isGuildMember) btnRow.addComponents(new ButtonBuilder().setCustomId(`price_pubG_${itemData.name}`).setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success));
+            btnRow.addComponents(
                 new ButtonBuilder().setCustomId(`price_pubF_${itemData.name}`).setLabel('📢 發布至親友閒聊').setStyle(ButtonStyle.Primary),
                 new ButtonBuilder().setLabel('🌐 網頁查看').setStyle(ButtonStyle.Link).setURL('https://artalestock.netlify.app/') 
             );
@@ -352,10 +350,9 @@ async function handleCommand(interaction, client) {
                 )
                 .setFooter({ text: '市場瞬息萬變，投資理財有賺有賠', iconURL: client.user.displayAvatarURL() });
 
-            const btnRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('arbitrage_pubG_0').setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId('arbitrage_pubF_0').setLabel('📢 發布至親友閒聊').setStyle(ButtonStyle.Primary)
-            );
+            const btnRow = new ActionRowBuilder();
+            if (isGuildMember) btnRow.addComponents(new ButtonBuilder().setCustomId('arbitrage_pubG_0').setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success));
+            btnRow.addComponents(new ButtonBuilder().setCustomId('arbitrage_pubF_0').setLabel('📢 發布至親友閒聊').setStyle(ButtonStyle.Primary));
 
             return interaction.reply({ embeds: [embed], components: [btnRow], flags: MessageFlags.Ephemeral });
         }
@@ -398,10 +395,9 @@ async function handleCommand(interaction, client) {
                 .setTitle('💳 台幣 (TWD) ➡️ 楓幣 最佳化轉換試算')
                 .setDescription(descText);
 
-            const btnRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('cash_pubG_0').setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId('cash_pubF_0').setLabel('📢 發布至親友閒聊').setStyle(ButtonStyle.Primary)
-            );
+            const btnRow = new ActionRowBuilder();
+            if (isGuildMember) btnRow.addComponents(new ButtonBuilder().setCustomId('cash_pubG_0').setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success));
+            btnRow.addComponents(new ButtonBuilder().setCustomId('cash_pubF_0').setLabel('📢 發布至親友閒聊').setStyle(ButtonStyle.Primary));
 
             return interaction.reply({ embeds: [embed], components: [btnRow], flags: MessageFlags.Ephemeral });
         }
@@ -534,10 +530,9 @@ async function handleCommand(interaction, client) {
             embed.setDescription(desc)
                  .setFooter({ text: '※ 期望造價僅供參考，請衡量自身歐非體質', iconURL: client.user.displayAvatarURL() });
 
-            const btnRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('scroll_pubG_0').setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success),
-                new ButtonBuilder().setCustomId('scroll_pubF_0').setLabel('📢 發布至親友閒聊').setStyle(ButtonStyle.Primary)
-            );
+            const btnRow = new ActionRowBuilder();
+            if (isGuildMember) btnRow.addComponents(new ButtonBuilder().setCustomId('scroll_pubG_0').setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success));
+            btnRow.addComponents(new ButtonBuilder().setCustomId('scroll_pubF_0').setLabel('📢 發布至親友閒聊').setStyle(ButtonStyle.Primary));
 
             return interaction.reply({ embeds: [embed], components: [btnRow], flags: MessageFlags.Ephemeral });
         }
