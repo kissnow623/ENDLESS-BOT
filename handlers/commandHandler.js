@@ -22,7 +22,7 @@ async function handleCommand(interaction, client) {
         if (cId && (cId.includes('market_') || cId.includes('publish_') || cId.includes('portfolio_') || cId.includes('paper_'))) {
             return handleMarketInteraction(interaction, client, isGuildMember);
         }
-        // 其他系統的元件可能由 componentHandler 處理，這裡直接 return 放行
+        // 其他系統的元件 (如結案按鈕) 保留給 componentHandler 處理，這裡直接放行
         return; 
     }
 
