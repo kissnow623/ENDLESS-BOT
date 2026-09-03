@@ -49,7 +49,7 @@ async function handleCommand(interaction, client) {
             }
 
             if (action === 'market_arbitrage') {
-                // 自動重置選單狀態
+                // 只有非彈出表單的功能，才能安全重置選單狀態
                 interaction.message.edit({ components: interaction.message.components }).catch(() => {});
 
                 const allItems = getAllMarketItems();
@@ -78,7 +78,6 @@ async function handleCommand(interaction, client) {
             }
 
             if (action === 'market_scroll') {
-                // 自動重置選單狀態
                 interaction.message.edit({ components: interaction.message.components }).catch(() => {});
                 return interaction.reply({ 
                     content: '🧮 **衝卷試算** 包含多階混卷、純白救援等高階參數，Discord 的下拉表單無法容納這麼多欄位。\n👉 **請直接在對話框輸入 `/衝卷試算` 來呼叫完整版 AI 計算機！**', 
@@ -86,19 +85,16 @@ async function handleCommand(interaction, client) {
                 });
             }
 
+            // 🌟 警報第一步：先搜關鍵字 (跟即時查價一樣)
             if (action === 'market_alert_set') {
-                const modal = new ModalBuilder().setCustomId('modal_market_alert').setTitle('🚨 設定價格推播警報');
+                const modal = new ModalBuilder().setCustomId('modal_market_alert_search').setTitle('🚨 警報設定 (1/2)：搜尋物品');
                 modal.addComponents(
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('item_name').setLabel("物品名稱").setStyle(TextInputStyle.Short).setRequired(true)),
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('target_price').setLabel("目標觸發價格 (萬)").setStyle(TextInputStyle.Short).setRequired(true)),
-                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('condition').setLabel("觸發條件 (請填 高於 或 低於)").setStyle(TextInputStyle.Short).setRequired(true).setValue('低於'))
+                    new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('item_name').setLabel("請輸入物品關鍵字 (例如: 詛咒/30%)").setStyle(TextInputStyle.Short).setRequired(true))
                 );
                 return interaction.showModal(modal);
             }
 
-            // 🌟 加入完整的我的警報查詢與「刪除機制」
             if (action === 'market_alert_list') {
-                // 自動重置選單狀態
                 interaction.message.edit({ components: interaction.message.components }).catch(() => {});
                 await interaction.deferReply({ flags: MessageFlags.Ephemeral });
                 try {
@@ -112,13 +108,12 @@ async function handleCommand(interaction, client) {
                     
                     snapshot.forEach(doc => {
                         const data = doc.data();
-                        desc += `🔹 **${data.itemName}** ➔ 當 ${data.condition} \`${data.targetPrice} 萬\` 時通知\n`;
+                        desc += `🔹 **${data.itemName}** ➔ 當 ${data.condition} \`${data.targetPrice} 萬\` 時私訊通知\n`;
                         
-                        // 建立刪除選項
                         deleteOptions.push(new StringSelectMenuOptionBuilder()
                             .setLabel(`刪除: ${data.itemName.substring(0, 50)}`)
                             .setDescription(`條件: ${data.condition} ${data.targetPrice}萬`)
-                            .setValue(doc.id) // 用資料庫的文檔 ID 當作值，確保精準刪除
+                            .setValue(doc.id) 
                         );
                     });
                     
@@ -128,7 +123,7 @@ async function handleCommand(interaction, client) {
                     if (deleteOptions.length > 0) {
                         components.push(new ActionRowBuilder().addComponents(
                             new StringSelectMenuBuilder()
-                                .setCustomId('select_delete_alert')
+                                .setCustomId('market_delete_alert') // 🌟 修改 ID 確保 interactionCreate.js 成功放行
                                 .setPlaceholder('🗑️ 點擊這裡選擇要刪除的警報...')
                                 .addOptions(deleteOptions.slice(0, 25))
                         ));
@@ -143,18 +138,18 @@ async function handleCommand(interaction, client) {
             return interaction.reply({ content: '🛠️ 此功能正在連線調整中，即將開放！', flags: MessageFlags.Ephemeral });
         }
 
-        // 🌟 新增：處理刪除警報的下拉選單
-        if (interaction.customId === 'select_delete_alert') {
+        // 🌟 刪除警報的下拉選單攔截
+        if (interaction.customId === 'market_delete_alert') {
             const alertId = interaction.values[0];
             try {
                 await db.collection('priceAlerts').doc(alertId).delete();
-                return interaction.update({ content: '✅ **指定的警報已成功刪除！** 不會再被打擾囉！', embeds: [], components: [] });
+                return interaction.update({ content: '✅ **指定的警報已成功刪除！**', embeds: [], components: [] });
             } catch (err) {
                 return interaction.reply({ content: '❌ 刪除警報時發生錯誤，請稍後再試。', flags: MessageFlags.Ephemeral });
             }
         }
 
-        // 2️⃣ 處理查價結果的二次下拉選單 (智能模糊搜尋結果選擇)
+        // 2️⃣ 處理查價結果的二次下拉選單
         if (interaction.customId === 'select_market_price_result') {
             const itemName = interaction.values[0];
             const itemData = getMarketItem(itemName);
@@ -180,15 +175,28 @@ async function handleCommand(interaction, client) {
 
             return interaction.update({ content: '✅ 查詢成功！', embeds: [embed], components: [btnRow] });
         }
+
+        // 🌟 警報第二步：選好道具後，彈出設定目標價的表單
+        if (interaction.customId === 'market_alert_select_item') {
+            const itemName = interaction.values[0];
+            const safeName = itemName.substring(0, 50); // 確保不超過 API 限制
+            
+            const modal = new ModalBuilder().setCustomId(`market_alert_config_${safeName}`).setTitle(`🚨 設定: ${safeName}`);
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('target_price').setLabel("目標觸發價格 (萬)").setStyle(TextInputStyle.Short).setRequired(true)),
+                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('condition').setLabel("觸發條件 (請填 高於 或 低於)").setStyle(TextInputStyle.Short).setRequired(true).setValue('低於'))
+            );
+            return interaction.showModal(modal);
+        }
     }
 
     if (interaction.isModalSubmit()) {
+        
+        // 查價的關鍵字表單
         if (interaction.customId === 'modal_market_price') {
             const query = (interaction.fields.getTextInputValue('item_name') || '').toLowerCase();
-            
             const allItems = getAllMarketItems() || [];
             
-            // 🌟 終極防當機：過濾資料並「強制去除重複名稱」，確保 API 建立選單時不會崩潰
             const uniqueItems = [];
             const seenNames = new Set();
             for (const item of allItems) {
@@ -236,6 +244,54 @@ async function handleCommand(interaction, client) {
             return interaction.reply({ embeds: [embed], components: [btnRow], flags: MessageFlags.Ephemeral });
         }
 
+        // 🌟 警報關鍵字表單 (過濾後讓使用者選)
+        if (interaction.customId === 'modal_market_alert_search') {
+            const query = (interaction.fields.getTextInputValue('item_name') || '').toLowerCase();
+            const allItems = getAllMarketItems() || [];
+            
+            const uniqueItems = [];
+            const seenNames = new Set();
+            for (const item of allItems) {
+                const name = item.name || '';
+                if (name && name.toLowerCase().includes(query) && !seenNames.has(name)) {
+                    seenNames.add(name);
+                    uniqueItems.push(item);
+                }
+            }
+            
+            if (uniqueItems.length === 0) return interaction.reply({ content: `🔍 找不到包含 **${query}** 的任何物品報價！`, flags: MessageFlags.Ephemeral });
+            
+            const options = uniqueItems.slice(0, 25).map(r => {
+                const safeName = r.name.substring(0, 100); 
+                const safeDesc = `目前報價: ${r.price || '無報價'}`.substring(0, 100);
+                return new StringSelectMenuOptionBuilder().setLabel(safeName).setValue(safeName).setDescription(safeDesc);
+            });
+            
+            const dropdownRow = new ActionRowBuilder().addComponents(
+                new StringSelectMenuBuilder().setCustomId('market_alert_select_item').setPlaceholder('請下拉選擇要設定警報的精確物品...').addOptions(options)
+            );
+            
+            return interaction.reply({ content: `🔍 找到 **${uniqueItems.length}** 個符合的物品，請選擇：`, components: [dropdownRow], flags: MessageFlags.Ephemeral });
+        }
+
+        // 🌟 警報設定表單寫入資料庫
+        if (interaction.customId.startsWith('market_alert_config_')) {
+            const itemName = interaction.customId.replace('market_alert_config_', '');
+            const price = interaction.fields.getTextInputValue('target_price');
+            const condition = interaction.fields.getTextInputValue('condition');
+            
+            await db.collection('priceAlerts').add({
+                userId: interaction.user.id,
+                userName: interaction.user.username,
+                itemName: itemName,
+                targetPrice: Number(price),
+                condition: condition, 
+                createdAt: Date.now()
+            });
+
+            return interaction.reply({ content: `✅ **警報寫入成功！**\n資料庫已記錄：當【${itemName}】${condition} \`${price} 萬\` 時，將會以 **私訊 (DM)** 方式推播通知您！`, flags: MessageFlags.Ephemeral });
+        }
+
         if (interaction.customId === 'modal_market_cash') {
             const twd = parseInt(interaction.fields.getTextInputValue('twd_amount')) || 0;
             const rate = parseFloat(interaction.fields.getTextInputValue('wc_rate')) || 6.63;
@@ -271,23 +327,6 @@ async function handleCommand(interaction, client) {
             btnRow.addComponents(new ButtonBuilder().setCustomId(`cash_pubF_0`).setLabel('📢 發布至親友閒聊').setStyle(ButtonStyle.Primary));
 
             return interaction.reply({ embeds: [embed], components: [btnRow], flags: MessageFlags.Ephemeral });
-        }
-
-        if (interaction.customId === 'modal_market_alert') {
-            const item = interaction.fields.getTextInputValue('item_name');
-            const price = interaction.fields.getTextInputValue('target_price');
-            const condition = interaction.fields.getTextInputValue('condition');
-            
-            await db.collection('priceAlerts').add({
-                userId: interaction.user.id,
-                userName: interaction.user.username,
-                itemName: item,
-                targetPrice: Number(price),
-                condition: condition, 
-                createdAt: Date.now()
-            });
-
-            return interaction.reply({ content: `✅ **警報寫入成功！**\n資料庫已記錄：當【${item}】${condition} \`${price} 萬\` 時，將啟動背景推播私訊通知您！`, flags: MessageFlags.Ephemeral });
         }
     }
 
@@ -810,7 +849,7 @@ async function handleCommand(interaction, client) {
             const amount = interaction.options.getInteger('數量');
             try {
                 const deleted = await interaction.channel.bulkDelete(amount, true);
-                return interaction.editReply(`✅ 成功清除了 **${deleted.size}** 則訊息！`);
+                return interaction.editReply(`✅ 成功清吃了 **${deleted.size}** 則訊息！`);
             } catch (err) { return interaction.editReply('❌ 清除失敗，請確認訊息是否超過 14 天。'); }
         }
     }
