@@ -34,7 +34,7 @@ const updateMarketData = async () => {
     try {
         const apiUrl = 'https://script.google.com/macros/s/AKfycbyxZWLikYCMoXyZkIqlH0XROpCVBIBPSl1RZbLZAnLa4Dhw6kTY6I4_v-B1T4Jjyio/exec';
         
-        console.log('[📦 物價調查局] 開始爬取最新物價資料與走勢圖...');
+        console.log('[📦 物價調查局] 開始爬取最新物價資料並動態繪製圖表...');
         const response = await fetch(apiUrl);
         const textData = await response.text();
 
@@ -54,8 +54,9 @@ const updateMarketData = async () => {
                 
                 let currentPrice = null;
                 let prevPrice = null;
-                let historyData = [];
-                let historyLabels = [];
+                
+                // 🌟 新增：存放歷史詳細數據的陣列，用來切出不同時間軸
+                let rawHistory = [];
                 
                 for (let r = 0; r < data.rows.length; r++) {
                     const timeStr = data.rows[r][0];
@@ -64,13 +65,17 @@ const updateMarketData = async () => {
                     if (cellVal !== "" && cellVal !== null && cellVal !== undefined && cellVal !== 0 && cellVal !== "0") {
                         const numVal = Number(cellVal);
                         if (!isNaN(numVal)) {
-                            historyData.push((numVal / 10000).toFixed(0));
-                            
                             const d = new Date(timeStr);
                             const mm = String(d.getMonth() + 1).padStart(2, '0');
                             const dd = String(d.getDate()).padStart(2, '0');
                             const hh = String(d.getHours()).padStart(2, '0');
-                            historyLabels.push(`${mm}/${dd} ${hh}:00`);
+                            
+                            // 儲存原始時間戳 (毫秒) 以便後續篩選
+                            rawHistory.push({
+                                timeMs: d.getTime(),
+                                priceWan: (numVal / 10000).toFixed(0),
+                                label: `${mm}/${dd} ${hh}:00`
+                            });
                             
                             prevPrice = currentPrice;
                             currentPrice = cellVal;
@@ -78,7 +83,7 @@ const updateMarketData = async () => {
                     }
                 }
 
-                if (itemName && currentPrice !== null) {
+                if (itemName && currentPrice !== null && rawHistory.length > 0) {
                     let trendStr = '--';
                     let rawTrendValue = 0;
                     const currNum = Number(currentPrice);
@@ -97,24 +102,48 @@ const updateMarketData = async () => {
                         trendStr = '🆕 新上架/近期無交易';
                     }
 
+                    // 🌟 核心動態切片引擎：依據最新一筆資料的時間，往前推算擷取特定時段的數據
+                    const lastTime = rawHistory[rawHistory.length - 1].timeMs;
+                    
+                    const getHistoryByHours = (hours) => {
+                        const threshold = lastTime - (hours * 60 * 60 * 1000);
+                        let filtered = rawHistory.filter(h => h.timeMs >= threshold);
+                        // 為了畫線，至少需要 2 個點。如果不夠（例如新上市），就退回取最後 2 筆防呆
+                        if (filtered.length < 2) filtered = rawHistory.slice(-2);
+                        return filtered;
+                    };
+
+                    const data6h = getHistoryByHours(6);
+                    const data12h = getHistoryByHours(12);
+                    const data24h = getHistoryByHours(24);
+                    const data48h = getHistoryByHours(48);
+
+                    // 產生各區間的 QuickChart 網址
+                    const chartUrl6h = generateChartUrl(data6h.map(d => d.label), data6h.map(d => d.priceWan));
+                    const chartUrl12h = generateChartUrl(data12h.map(d => d.label), data12h.map(d => d.priceWan));
+                    const chartUrl24h = generateChartUrl(data24h.map(d => d.label), data24h.map(d => d.priceWan));
+                    const chartUrl48h = generateChartUrl(data48h.map(d => d.label), data48h.map(d => d.priceWan));
+                    const chartUrlAll = generateChartUrl(rawHistory.map(d => d.label), rawHistory.map(d => d.priceWan));
+
                     const formattedPrice = !isNaN(currNum) ? currNum.toLocaleString('en-US') : currentPrice;
-                    const recentLabels = historyLabels.slice(-15);
-                    const recentData = historyData.slice(-15);
-                    const finalChartUrl = generateChartUrl(recentLabels, recentData);
 
                     newCache.push({
                         name: String(itemName).trim(),
                         price: formattedPrice,
-                        rawPrice: isNaN(currNum) ? 0 : currNum, // 🌟 存原始數字供計算
+                        rawPrice: isNaN(currNum) ? 0 : currNum, 
                         trend: trendStr,
                         rawTrend: rawTrendValue,
-                        chartUrl: finalChartUrl
+                        chartUrl: chartUrlAll, // 全區間作為預設值
+                        chartUrl6h: chartUrl6h,
+                        chartUrl12h: chartUrl12h,
+                        chartUrl24h: chartUrl24h,
+                        chartUrl48h: chartUrl48h
                     });
                 }
             }
 
             marketCache = newCache;
-            console.log(`[📦 物價調查局] 資料與圖表更新成功！共載入 ${marketCache.length} 筆有效物品。`);
+            console.log(`[📦 物價調查局] 資料庫圖表自動繪製完畢！共追蹤 ${marketCache.length} 筆有效物品。`);
         }
     } catch (error) {
         console.error('[❌ 物價調查局] 爬取發生例外錯誤:', error.message);
@@ -132,7 +161,6 @@ const searchMarketItems = (query) => {
         .slice(0, 25);
 };
 
-// 🌟 新增：取得所有物品以供雷達運算
 const getAllMarketItems = () => {
     return marketCache;
 };
