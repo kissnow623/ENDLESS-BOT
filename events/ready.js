@@ -63,7 +63,7 @@ module.exports = {
             }
         ];
         
-        // 📈 🌟 新增物價查詢與進階分析指令
+        // 📈 🌟 新增物價查詢與進階分析指令 (加入發布市場看板指令)
         const marketCommands = [
             {
                 name: '查價',
@@ -87,19 +87,34 @@ module.exports = {
                 description: '計算如何將台幣(TWD)最大化轉換為楓幣',
                 options: [
                     { name: '台幣金額', description: '預計投入的台幣預算 (TWD)', type: ApplicationCommandOptionType.Integer, required: true },
-                    { name: '點數比值', description: '1台幣可換多少WC? (不填則預設為官方 6.63)', type: ApplicationCommandOptionType.Number, required: false }
+                    { name: '點數比值', description: '1台幣可換多少WC? (不填預設為 6.63)', type: ApplicationCommandOptionType.Number, required: false }
                 ]
             },
             {
                 name: '衝卷試算',
-                description: '動態規劃演算法：計算衝卷機率與期望總造價',
+                description: 'AI動態規劃：支援混卷、純白救援、停損策略與市價評估',
                 options: [
-                    { name: '裝備底價', description: '裝備本身的價格 (單位：萬)', type: ApplicationCommandOptionType.Number, required: true },
-                    { name: '卷軸價格', description: '單張卷軸的價格 (單位：萬)', type: ApplicationCommandOptionType.Number, required: true },
-                    { name: '成功率', description: '卷軸的成功率 (1-100)', type: ApplicationCommandOptionType.Integer, required: true },
-                    { name: '剩餘次數', description: '裝備剩餘可衝卷次數 (1-10)', type: ApplicationCommandOptionType.Integer, required: true },
-                    { name: '毀損率', description: '卷軸失敗時的爆裝率 (不填預設為 0)', type: ApplicationCommandOptionType.Integer, required: false }
+                    { name: '裝備底價', description: '白板裝的價格 (萬)', type: ApplicationCommandOptionType.Number, required: true },
+                    { name: '裝備總衝數', description: '裝備總共可衝次數', type: ApplicationCommandOptionType.Integer, required: true },
+                    { name: '目標過數', description: '你想點過幾張？', type: ApplicationCommandOptionType.Integer, required: true },
+                    { name: '主力卷價格', description: '主力卷單價 (萬)', type: ApplicationCommandOptionType.Number, required: true },
+                    { name: '主力卷成功率', description: '主力卷成功率 (%)', type: ApplicationCommandOptionType.Integer, required: true },
+                    { name: '主力卷張數', description: '兩段式點法：第一階段要強制點幾張？', type: ApplicationCommandOptionType.Integer, required: false },
+                    { name: '容許失敗數', description: '失敗幾次就丟掉重來？(不填代表無限制硬衝)', type: ApplicationCommandOptionType.Integer, required: false },
+                    { name: '主力卷毀損率', description: '失敗時的爆裝率 (%)', type: ApplicationCommandOptionType.Integer, required: false },
+                    { name: '純白卷價格', description: '純白卷軸單價 (萬)', type: ApplicationCommandOptionType.Number, required: false },
+                    { name: '純白成功率', description: '純白卷軸成功率 (%)', type: ApplicationCommandOptionType.Integer, required: false },
+                    { name: '純白毀損率', description: '純白失敗的爆裝率 (%)', type: ApplicationCommandOptionType.Integer, required: false },
+                    { name: '備用卷價格', description: '第二階段/墊刀用的卷軸單價 (萬)', type: ApplicationCommandOptionType.Number, required: false },
+                    { name: '備用卷成功率', description: '備用卷軸成功率 (%)', type: ApplicationCommandOptionType.Integer, required: false },
+                    { name: '備用卷毀損率', description: '備用卷失敗的爆裝率 (%)', type: ApplicationCommandOptionType.Integer, required: false },
+                    { name: '成品市價', description: '若輸入，將評估自己點跟直接買哪個賺 (萬)', type: ApplicationCommandOptionType.Number, required: false }
                 ]
+            },
+            {
+                name: '發布市場看板',
+                description: '發布市場輔助看板與一鍵發布系統 (僅限幹部)',
+                default_member_permissions: adminPerms
             }
         ];
 
