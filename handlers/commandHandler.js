@@ -1,7 +1,7 @@
 // handlers/commandHandler.js
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, PermissionsBitField, MessageFlags } = require('discord.js');
 const { db, addDbStat, getCache } = require('../utils/firebase');
-const { config, getAgentRoleId, MARKET_CHANNEL_ID } = require('../config/constants'); // 🌟 已經將路徑修正為正確的 config/constants
+const { config, getAgentRoleId, MARKET_CHANNEL_ID } = require('../config/constants'); 
 const { generateMemberLeaderboard, generateFriendLeaderboard, updateNickname } = require('../utils/guildHelpers');
 const { getTaiwanTime, updateBoard, checkIsAgent, buildAgentStatMessage, generateScheduleEmbed, broadcastToManagementAreas } = require('../utils/echoHelpers');
 const { sendStickerViaWebhook } = require('../utils/stickerHelpers');
@@ -40,8 +40,7 @@ async function handleCommand(interaction, client) {
 
             const action = interaction.values[0];
 
-            // 🌟 解決下拉選單卡住無法連點的問題：在背景刷新原本的訊息元件
-            interaction.message.edit({ components: interaction.message.components }).catch(() => {});
+            // ⚠️ 已經移除 interaction.message.edit() 防止 Modal 衝突崩潰
 
             if (action === 'market_price') {
                 const modal = new ModalBuilder().setCustomId('modal_market_price').setTitle('🔍 即時查價系統 (支援關鍵字)');
@@ -130,8 +129,10 @@ async function handleCommand(interaction, client) {
 
             const embed = new EmbedBuilder().setColor(0x0f172a).setTitle(`📊 ${itemData.name}`)
                 .setDescription(`**最新價格：** \`${itemData.price}\`\n**近一次波動：** ${itemData.trend}`)
-                .setImage(displayChartUrl).setTimestamp()
+                .setTimestamp()
                 .setFooter({ text: `價格走勢 [${viewLevelText}] • 資料來源: Artale 楓之股`, iconURL: client.user.displayAvatarURL() });
+
+            if (displayChartUrl) embed.setImage(displayChartUrl);
 
             const btnRow = new ActionRowBuilder();
             if (isGuildMember) btnRow.addComponents(new ButtonBuilder().setCustomId(`price_pubG_${itemData.name}`).setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success));
@@ -146,34 +147,47 @@ async function handleCommand(interaction, client) {
 
     if (interaction.isModalSubmit()) {
         if (interaction.customId === 'modal_market_price') {
-            const query = interaction.fields.getTextInputValue('item_name').toLowerCase();
+            const query = (interaction.fields.getTextInputValue('item_name') || '').toLowerCase();
             
-            const allItems = getAllMarketItems();
-            const results = allItems.filter(item => item.name.toLowerCase().includes(query));
+            const allItems = getAllMarketItems() || [];
             
-            if (results.length === 0) return interaction.reply({ content: `🔍 找不到包含 **${query}** 的任何物品報價！`, flags: MessageFlags.Ephemeral });
+            // 🌟 終極防當機：過濾資料並「強制去除重複名稱」，確保 API 建立選單時不會崩潰
+            const uniqueItems = [];
+            const seenNames = new Set();
+            for (const item of allItems) {
+                const name = item.name || '';
+                if (name && name.toLowerCase().includes(query) && !seenNames.has(name)) {
+                    seenNames.add(name);
+                    uniqueItems.push(item);
+                }
+            }
             
-            if (results.length > 1) {
-                const options = results.slice(0, 25).map(r => {
-                    let desc = r.price || '無報價';
-                    return new StringSelectMenuOptionBuilder().setLabel(r.name).setValue(r.name).setDescription(`目前報價: ${desc}`);
+            if (uniqueItems.length === 0) return interaction.reply({ content: `🔍 找不到包含 **${query}** 的任何物品報價！`, flags: MessageFlags.Ephemeral });
+            
+            if (uniqueItems.length > 1) {
+                const options = uniqueItems.slice(0, 25).map(r => {
+                    const safeName = r.name.substring(0, 100); // 確保長度符合 Discord 規範
+                    const safeDesc = `目前報價: ${r.price || '無報價'}`.substring(0, 100);
+                    return new StringSelectMenuOptionBuilder().setLabel(safeName).setValue(safeName).setDescription(safeDesc);
                 });
                 
                 const dropdownRow = new ActionRowBuilder().addComponents(
                     new StringSelectMenuBuilder().setCustomId('select_market_price_result').setPlaceholder('找到多個結果，請下拉選擇精確物品...').addOptions(options)
                 );
                 
-                return interaction.reply({ content: `🔍 找到 **${results.length}** 個包含「${query}」的物品，請從下方選單點擊查看：`, components: [dropdownRow], flags: MessageFlags.Ephemeral });
+                return interaction.reply({ content: `🔍 找到 **${uniqueItems.length}** 個包含「${query}」的物品，請從下方選單點擊查看：`, components: [dropdownRow], flags: MessageFlags.Ephemeral });
             }
 
-            const itemData = results[0];
+            const itemData = uniqueItems[0];
             const displayChartUrl = isGuildMember ? itemData.chartUrl : (itemData.chartUrl1Day || itemData.chartUrl);
             const viewLevelText = isGuildMember ? '全區間線圖 (公會權限)' : '24小時線圖 (親友權限)';
 
             const embed = new EmbedBuilder().setColor(0x0f172a).setTitle(`📊 ${itemData.name}`)
                 .setDescription(`**最新價格：** \`${itemData.price}\`\n**近一次波動：** ${itemData.trend}`)
-                .setImage(displayChartUrl).setTimestamp()
+                .setTimestamp()
                 .setFooter({ text: `價格走勢 [${viewLevelText}] • 資料來源: Artale 楓之股`, iconURL: client.user.displayAvatarURL() });
+
+            if (displayChartUrl) embed.setImage(displayChartUrl);
 
             const btnRow = new ActionRowBuilder();
             if (isGuildMember) btnRow.addComponents(new ButtonBuilder().setCustomId(`price_pubG_${itemData.name}`).setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success));
@@ -240,6 +254,7 @@ async function handleCommand(interaction, client) {
         }
     }
 
+    // 🌟 雙按鈕智慧路由發布系統
     if (interaction.isButton() && interaction.customId) {
         const cId = interaction.customId;
         
@@ -251,6 +266,7 @@ async function handleCommand(interaction, client) {
             const targetChannel = await client.channels.fetch(targetChannelId).catch(() => null);
             if (!targetChannel) return interaction.reply({ content: `❌ 找不到目標頻道 (${targetChannelId})，無法發布。`, flags: MessageFlags.Ephemeral });
 
+            // 處理查價發布 (需重抓資料)
             if (cId.startsWith('price_')) {
                 const parts = cId.split('_'); 
                 const itemName = parts.slice(2).join('_');
@@ -258,27 +274,46 @@ async function handleCommand(interaction, client) {
                 
                 if (!itemData) return interaction.reply({ content: '資料已過期，無法發布。', flags: MessageFlags.Ephemeral });
 
+                // 公會頻道發布全圖，親友頻道發布 24H 圖
                 const displayChartUrl = isGuildChannel ? itemData.chartUrl : (itemData.chartUrl1Day || itemData.chartUrl);
                 const viewLevelText = isGuildChannel ? '全區間線圖 (公會權限)' : '24小時線圖 (親友權限)';
 
                 const embed = new EmbedBuilder().setColor(0x0f172a).setTitle(`📊 ${itemData.name} (由 ${interaction.user.username} 分享)`)
                     .setDescription(`**最新價格：** \`${itemData.price}\`\n**近一次波動：** ${itemData.trend}`)
-                    .setImage(displayChartUrl).setTimestamp()
+                    .setTimestamp()
                     .setFooter({ text: `價格走勢 [${viewLevelText}] • 資料來源: Artale 楓之股`, iconURL: client.user.displayAvatarURL() });
 
-                await targetChannel.send({ embeds: [embed] });
-                return interaction.update({ content: `✅ 已成功將查價資訊分享至 ${channelName}！`, components: [] });
+                if (displayChartUrl) embed.setImage(displayChartUrl);
+
+                try {
+                    await targetChannel.send({ embeds: [embed] });
+                    return interaction.update({ content: `✅ 已成功將查價資訊分享至 ${channelName}！`, components: [] });
+                } catch (err) {
+                    console.error('發送查價分享失敗:', err);
+                    return interaction.reply({ content: `❌ 發布失敗，機器人可能沒有該頻道的發言權限。`, flags: MessageFlags.Ephemeral });
+                }
             }
 
+            // 處理其他系統發布 (直接轉傳原 Embed)
             if (cId.startsWith('arbitrage_') || cId.startsWith('cash_') || cId.startsWith('scroll_')) {
+                // 🌟 防護檢查：確保訊息內有 embed 才執行發布
+                if (!interaction.message.embeds || interaction.message.embeds.length === 0) {
+                    return interaction.reply({ content: '❌ 無法取得原始圖表，發布失敗。', flags: MessageFlags.Ephemeral });
+                }
+
                 const originalEmbed = EmbedBuilder.from(interaction.message.embeds[0]);
                 
                 if (cId.startsWith('arbitrage_')) originalEmbed.setTitle(`🎯 市場行情套利雷達 (由 ${interaction.user.username} 分享)`);
                 if (cId.startsWith('cash_')) originalEmbed.setTitle(`💳 課金最佳化轉換試算 (由 ${interaction.user.username} 分享)`);
                 if (cId.startsWith('scroll_')) originalEmbed.setTitle(`🧮 衝卷計算機試算結果 (由 ${interaction.user.username} 分享)`);
                 
-                await targetChannel.send({ embeds: [originalEmbed] });
-                return interaction.update({ content: `✅ 已成功分享至 ${channelName}！`, components: [] });
+                try {
+                    await targetChannel.send({ embeds: [originalEmbed] });
+                    return interaction.update({ content: `✅ 已成功分享至 ${channelName}！`, components: [] });
+                } catch (err) {
+                    console.error('發送系統分享失敗:', err);
+                    return interaction.reply({ content: `❌ 發布失敗，機器人可能沒有該頻道的發言權限。`, flags: MessageFlags.Ephemeral });
+                }
             }
         }
     }
@@ -307,9 +342,10 @@ async function handleCommand(interaction, client) {
                 .setColor(0x0f172a) 
                 .setTitle(`📊 ${itemData.name}`)
                 .setDescription(`**最新價格：** \`${itemData.price}\`\n**近一次波動：** ${itemData.trend}`)
-                .setImage(displayChartUrl)
-                .setFooter({ text: `價格走勢 [${viewLevelText}] • 資料來源: Artale 楓之股`, iconURL: client.user.displayAvatarURL() })
-                .setTimestamp();
+                .setTimestamp()
+                .setFooter({ text: `價格走勢 [${viewLevelText}] • 資料來源: Artale 楓之股`, iconURL: client.user.displayAvatarURL() });
+
+            if (displayChartUrl) embed.setImage(displayChartUrl);
 
             const btnRow = new ActionRowBuilder();
             if (isGuildMember) btnRow.addComponents(new ButtonBuilder().setCustomId(`price_pubG_${itemData.name}`).setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success));
