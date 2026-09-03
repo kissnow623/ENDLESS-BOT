@@ -7,26 +7,26 @@ const {
     bumpManagementMessages, syncManagementMessages, broadcastToManagementAreas, updateBoard 
 } = require('./echoHelpers');
 const { generateMemberLeaderboard, generateFriendLeaderboard } = require('./guildHelpers');
-const { updateMarketData, getAllMarketItems } = require('./marketHelpers'); // 🌟 引入爬蟲與市場快取
+const { updateMarketData, getAllMarketItems } = require('./marketHelpers'); 
 
 let lastLeaderboardMonth = -1;
 let lastMorningReportDay = -1;
+let lastWhaleHour = -1; // 用來防止同一個小時重複發布巨鯨警報
 
-const GUILD_CHANNEL_ID = '1539971422842261601'; // 晨間報表/巨鯨 發布目標：公會頻道
-const FRIEND_CHANNEL_ID = '1544604459085070346'; // 晨間報表/巨鯨 發布目標：親友閒聊
+const GUILD_CHANNEL_ID = '1539971422842261601'; 
+const FRIEND_CHANNEL_ID = '1544604459085070346'; 
+const WHALE_CHANNEL_ID = '1544604459085070346'; // 🌟 巨鯨雷達指定頻道
 
 function startScheduler(client) {
-    // 🌟 機器人開機時先抓取一次最新物價
     updateMarketData();
 
-    // 🌟 設定每 2 小時爬取一次更新 (減少對網站負擔)
     setInterval(() => {
         updateMarketData();
     }, 2 * 60 * 60 * 1000); 
 
     setInterval(async () => {
         const now = Date.now();
-        const twTime = new Date(now + 8 * 3600000); // 轉換為台灣時間
+        const twTime = new Date(now + 8 * 3600000); 
         const { allReservations, appSettings } = getCache();
 
         // ------------------------------------------
@@ -160,7 +160,6 @@ function startScheduler(client) {
                         const marketItem = allItems.find(i => i.name === alert.itemName);
                         if (!marketItem) return;
 
-                        // 將價格統一換算為「萬」來比對
                         const currentPriceInWan = (marketItem.rawPrice || 0) / 10000;
                         if (currentPriceInWan <= 0) return;
 
@@ -174,11 +173,10 @@ function startScheduler(client) {
                                 const embed = new EmbedBuilder()
                                     .setColor(0x10B981)
                                     .setTitle(`🚨 專屬觸價警報：【${alert.itemName}】`)
-                                    .setDescription(`**您設定的條件已達成！**\n\n🎯 目標條件：${alert.condition} \`${alert.targetPrice} 萬\`\n💰 當前報價：\`${currentPriceInWan.toFixed(2)} 萬\`\n📉 走勢：${marketItem.trend}`)
+                                    .setDescription(`**您設定的條件已達成！**\n\n🎯 目標條件：${alert.condition} \`${alert.targetPrice} 萬\`\n💰 當前報價：\`${currentPriceInWan.toFixed(2)} 萬\`\n📉 走勢：${marketItem.trend24h}`)
                                     .setFooter({ text: '此筆單次警報已自動從資料庫刪除', iconURL: client.user.displayAvatarURL() });
 
                                 await user.send({ embeds: [embed] });
-                                // 觸發後自動刪除該筆設定
                                 await db.collection('priceAlerts').doc(doc.id).delete();
                             } catch (e) {
                                 console.error(`無法私訊用戶 ${alert.userId} 價格警報`, e);
@@ -198,15 +196,14 @@ function startScheduler(client) {
                 lastMorningReportDay = currentDay;
                 
                 const allItems = getAllMarketItems() || [];
-                let validItems = allItems.filter(i => i.rawTrend !== 0 && !isNaN(i.rawTrend)).sort((a, b) => b.rawTrend - a.rawTrend);
+                let validItems = allItems.filter(i => i.rawTrend24h !== 0 && !isNaN(i.rawTrend24h)).sort((a, b) => b.rawTrend24h - a.rawTrend24h);
                 
                 if (validItems.length >= 6) {
-                    let pText = validItems.slice(0, 3).map((i, idx) => `**${idx+1}.** ${i.name} \n└ 📈 \`+${i.rawTrend.toFixed(2)}%\` (${i.price})`).join('\n');
-                    let dText = validItems.slice(-3).reverse().map((i, idx) => `**${idx+1}.** ${i.name} \n└ 📉 \`${i.rawTrend.toFixed(2)}%\` (${i.price})`).join('\n');
+                    let pText = validItems.slice(0, 3).map((i, idx) => `**${idx+1}.** ${i.name} \n└ 📈 \`+${i.rawTrend24h.toFixed(2)}%\` (${i.price})`).join('\n');
+                    let dText = validItems.slice(-3).reverse().map((i, idx) => `**${idx+1}.** ${i.name} \n└ 📉 \`${Math.abs(i.rawTrend24h).toFixed(2)}%\` (${i.price})`).join('\n');
 
-                    // 簡易計算市場總體氛圍
                     let totalTrend = 0;
-                    validItems.forEach(i => totalTrend += i.rawTrend);
+                    validItems.forEach(i => totalTrend += i.rawTrend24h);
                     const avgTrend = totalTrend / validItems.length;
                     let marketMood = "⚖️ 震盪盤整區間";
                     if (avgTrend > 2) marketMood = "🔥 強勢偏多格局";
@@ -231,31 +228,45 @@ function startScheduler(client) {
         } catch (error) { console.error('❌ 發送晨間報表時發生錯誤：', error); }
 
         // ------------------------------------------
-        // 🐳 E. 市場系統：巨鯨大戶異動警報 (每小時的 0 分檢查)
+        // 🐳 E. 市場系統：巨鯨大戶異動警報 (每小時觸發，自動防洗版)
         // ------------------------------------------
         try {
-            // 每小時的 00 分執行 (可容許一點時間誤差，例如 0分)
-            if (twTime.getUTCMinutes() === 0) {
+            const currentHour = twTime.getUTCHours();
+            if (currentHour !== lastWhaleHour) {
+                lastWhaleHour = currentHour;
+                
                 const allItems = getAllMarketItems() || [];
-                // 找出振幅超過 15% 的異常標的
-                const whales = allItems.filter(i => Math.abs(i.rawTrend) >= 15 && i.rawPrice > 0).sort((a, b) => Math.abs(b.rawTrend) - Math.abs(a.rawTrend));
+                const whales = allItems.filter(i => Math.abs(i.rawTrend24h) >= 15 && i.rawPrice > 0).sort((a, b) => Math.abs(b.rawTrend24h) - Math.abs(a.rawTrend24h));
 
                 if (whales.length > 0) {
-                    let desc = whales.map(i => `**${i.name}**\n└ ${i.rawTrend > 0 ? '🚀 【大戶掃貨暴漲】' : '🩸 【大戶倒貨暴跌】'} \`${i.trend}\` (現價: ${i.price})`).join('\n\n');
+                    let desc = whales.map(i => {
+                        const icon = i.rawTrend24h > 0 ? '🚀 【大戶掃貨暴漲】' : '🩸 【大戶倒貨暴跌】';
+                        return `**${i.name}**\n└ ${icon} \`${i.trend24h}\` (現價: ${i.price})`;
+                    }).join('\n\n');
                     
+                    const unixTime = Math.floor(Date.now() / 1000);
                     const embed = new EmbedBuilder()
                         .setColor(0xEC4899)
-                        .setTitle('🚨 巨鯨大戶異動警報 (過去24H變化)')
-                        .setDescription(`系統偵測到市場出現異常波動標的：\n\n${desc}`)
-                        .setFooter({ text: '※ 此為系統每小時自動背景偵測廣播', iconURL: client.user.displayAvatarURL() });
+                        .setTitle('🚨 巨鯨大戶異動警報 (過去 24H 變化)')
+                        .setDescription(`**發布時間**：<t:${unixTime}:F>\n\n系統偵測到市場出現異常波動標的：\n\n${desc}`)
+                        .setTimestamp()
+                        .setFooter({ text: '※ 為避免洗版，舊警報已自動刪除。投資有風險，請獨立判斷', iconURL: client.user.displayAvatarURL() });
 
-                    const gChannel = await client.channels.fetch(GUILD_CHANNEL_ID).catch(() => null);
-                    if (gChannel) await gChannel.send({ embeds: [embed] });
+                    const wChannel = await client.channels.fetch(WHALE_CHANNEL_ID).catch(() => null);
+                    if (wChannel) {
+                        // 🌟 自動找尋同頻道的舊警報並刪除 (防洗版功能)
+                        const msgs = await wChannel.messages.fetch({ limit: 15 }).catch(() => null);
+                        if (msgs) {
+                            const oldMsg = msgs.find(m => m.author.id === client.user.id && m.embeds[0] && m.embeds[0].title && m.embeds[0].title.includes('巨鯨大戶異動警報'));
+                            if (oldMsg) await oldMsg.delete().catch(() => null);
+                        }
+                        await wChannel.send({ embeds: [embed] });
+                    }
                 }
             }
         } catch (error) { console.error('❌ 檢查巨鯨大戶異動時發生錯誤：', error); }
 
-    }, 60 * 1000); // 每 60 秒執行一次主排程迴圈
+    }, 60 * 1000); 
 }
 
 module.exports = { startScheduler };
