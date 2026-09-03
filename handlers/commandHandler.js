@@ -5,7 +5,8 @@ const { config, getAgentRoleId, MARKET_CHANNEL_ID } = require('../config/constan
 const { generateMemberLeaderboard, generateFriendLeaderboard, updateNickname } = require('../utils/guildHelpers');
 const { getTaiwanTime, updateBoard, checkIsAgent, buildAgentStatMessage, generateScheduleEmbed, broadcastToManagementAreas } = require('../utils/echoHelpers');
 const { sendStickerViaWebhook } = require('../utils/stickerHelpers');
-const { getMarketItem, getAllMarketItems } = require('../utils/marketHelpers'); // 🌟 引入所有物價功能
+// 🌟 引入所有物價功能 (新增 searchMarketItems 支援看板搜尋)
+const { getMarketItem, getAllMarketItems, searchMarketItems } = require('../utils/marketHelpers'); 
 
 // 商城道具 WC 定價對照表
 const cashItemWcPrices = {
@@ -14,12 +15,114 @@ const cashItemWcPrices = {
 };
 
 async function handleCommand(interaction, client) {
-    const cmd = interaction.commandName;
     const { allReservations, appSettings, stickers, emotes } = getCache();
     
     const isOwner = interaction.user.id === interaction.guild?.ownerId; 
     const hasAdminRole = interaction.member?.roles?.cache?.hasAny(...config.roles.adminRoles); 
     const hasAdminPerm = interaction.member?.permissions?.has(PermissionsBitField.Flags.Administrator); 
+
+    // ==========================================
+    // 🌟 【市場看板：元件攔截處理區】 (選單、表單、按鈕)
+    // ==========================================
+    if (interaction.isStringSelectMenu() && interaction.customId === 'select_market_action') {
+        const action = interaction.values[0];
+
+        if (action === 'market_price') {
+            const modal = new ModalBuilder().setCustomId('modal_market_price').setTitle('🔍 即時查價系統');
+            modal.addComponents(new ActionRowBuilder().addComponents(
+                new TextInputBuilder().setCustomId('item_name').setLabel("請輸入物品名稱 (支援關鍵字)").setStyle(TextInputStyle.Short).setRequired(true)
+            ));
+            return interaction.showModal(modal);
+        }
+
+        if (action === 'market_arbitrage') {
+            const allItems = getAllMarketItems();
+            let validItems = allItems.filter(i => i.rawTrend !== 0 && !isNaN(i.rawTrend)).sort((a, b) => b.rawTrend - a.rawTrend);
+            
+            let pText = validItems.slice(0, 5).map((i, idx) => `**${idx+1}.** ${i.name} \n└ 📈 \`+${i.rawTrend.toFixed(2)}%\` (${i.price})`).join('\n\n');
+            let dText = validItems.slice(-5).reverse().map((i, idx) => `**${idx+1}.** ${i.name} \n└ 📉 \`${i.rawTrend.toFixed(2)}%\` (${i.price})`).join('\n\n');
+
+            const embed = new EmbedBuilder().setColor(0x3B82F6).setTitle('🎯 市場行情套利雷達')
+                .addFields({ name: '🔥 【溢價急漲區】(建議出售)', value: pText || '無', inline: true }, { name: '🧊 【折價超跌區】(建議掃貨)', value: dText || '無', inline: true });
+
+            const publishBtn = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('publish_arbitrage').setLabel('📢 發布至頻道').setStyle(ButtonStyle.Success)
+            );
+
+            return interaction.reply({ embeds: [embed], components: [publishBtn], flags: MessageFlags.Ephemeral });
+        }
+
+        if (action === 'market_alert_set') {
+            const modal = new ModalBuilder().setCustomId('modal_market_alert').setTitle('🚨 設定價格推播警報');
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('item_name').setLabel("物品名稱").setStyle(TextInputStyle.Short).setRequired(true)),
+                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('target_price').setLabel("目標觸發價格 (萬)").setStyle(TextInputStyle.Short).setRequired(true)),
+                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('condition').setLabel("觸發條件 (請填 高於 或 低於)").setStyle(TextInputStyle.Short).setRequired(true).setValue('低於'))
+            );
+            return interaction.showModal(modal);
+        }
+
+        return interaction.reply({ content: '🛠️ 此功能正在連線調整中，即將開放！', flags: MessageFlags.Ephemeral });
+    }
+
+    if (interaction.isModalSubmit()) {
+        if (interaction.customId === 'modal_market_price') {
+            const query = interaction.fields.getTextInputValue('item_name');
+            const results = searchMarketItems(query);
+            
+            if (results.length === 0) return interaction.reply({ content: `🔍 找不到包含 **${query}** 的報價！`, flags: MessageFlags.Ephemeral });
+            const itemData = results[0];
+
+            const embed = new EmbedBuilder().setColor(0x0f172a).setTitle(`📊 ${itemData.name}`)
+                .setDescription(`**最新價格：** \`${itemData.price}\`\n**近一次波動：** ${itemData.trend}`)
+                .setImage(itemData.chartUrl).setTimestamp()
+                .setFooter({ text: '價格走勢 (單位:萬) • 資料來源: Artale 楓之股', iconURL: client.user.displayAvatarURL() });
+
+            const btnRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`publish_price_${itemData.name}`).setLabel('📢 將此報價發布至頻道').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setLabel('🌐 網頁查看').setStyle(ButtonStyle.Link).setURL('https://artalestock.netlify.app/') 
+            );
+
+            return interaction.reply({ embeds: [embed], components: [btnRow], flags: MessageFlags.Ephemeral });
+        }
+
+        if (interaction.customId === 'modal_market_alert') {
+            const item = interaction.fields.getTextInputValue('item_name');
+            const price = interaction.fields.getTextInputValue('target_price');
+            const condition = interaction.fields.getTextInputValue('condition');
+            return interaction.reply({ content: `✅ **警報設定成功！**\n當【${item}】${condition} \`${price} 萬\` 時，機器人將會私訊通知您！`, flags: MessageFlags.Ephemeral });
+        }
+    }
+
+    if (interaction.isButton() && interaction.customId) {
+        if (interaction.customId.startsWith('publish_price_')) {
+            const itemName = interaction.customId.replace('publish_price_', '');
+            const itemData = getMarketItem(itemName);
+            
+            if (!itemData) return interaction.reply({ content: '資料已過期，無法發布。', flags: MessageFlags.Ephemeral });
+
+            const embed = new EmbedBuilder().setColor(0x0f172a).setTitle(`📊 ${itemData.name} (由 ${interaction.user.username} 分享)`)
+                .setDescription(`**最新價格：** \`${itemData.price}\`\n**近一次波動：** ${itemData.trend}`)
+                .setImage(itemData.chartUrl).setTimestamp();
+
+            await interaction.channel.send({ embeds: [embed] });
+            return interaction.update({ content: '✅ 已成功公開發布至頻道！', components: [] });
+        }
+
+        if (interaction.customId === 'publish_arbitrage') {
+            const originalEmbed = EmbedBuilder.from(interaction.message.embeds[0]);
+            originalEmbed.setTitle(`🎯 市場行情套利雷達 (由 ${interaction.user.username} 分享)`);
+            
+            await interaction.channel.send({ embeds: [originalEmbed] });
+            return interaction.update({ content: '✅ 套利雷達已發布至頻道！', components: [] });
+        }
+    }
+
+    // ==========================================
+    // 防呆機制：確保以下處理的都是斜線指令 (Slash Commands)
+    // ==========================================
+    if (!interaction.isChatInputCommand()) return;
+    const cmd = interaction.commandName;
 
     // ------------------------------------------
     // 📈 【物價進階分析指令區】
@@ -49,14 +152,11 @@ async function handleCommand(interaction, client) {
                 .setColor(0x0f172a) 
                 .setTitle(`📊 ${itemData.name}`)
                 .setDescription(`**最新價格：** \`${itemData.price}\`\n**近一次波動：** ${itemData.trend}`)
-                .setImage(itemData.chartUrl) 
+                .setImage(itemData.chartUrl)
                 .setFooter({ text: '價格走勢 (單位:萬) • 資料來源: Artale 楓之股', iconURL: client.user.displayAvatarURL() })
                 .setTimestamp();
 
-            return interaction.reply({
-                embeds: [embed],
-                components: [linkRow]
-            });
+            return interaction.reply({ embeds: [embed], components: [linkRow] });
         }
 
         // ⚖️ 套利雷達
@@ -355,7 +455,7 @@ async function handleCommand(interaction, client) {
     // ------------------------------------------
     // 💎 【公會系統指令區】
     // ------------------------------------------
-    if (['解鎖權限', '發布小指南', '查詢目前公會成員', '查詢目前親友團', '同步更名', '清除資料', '清除訊息', '星光紅毯設定'].includes(cmd)) {
+    if (['解鎖權限', '發布小指南', '發布市場看板', '查詢目前公會成員', '查詢目前親友團', '同步更名', '清除資料', '清除訊息', '星光紅毯設定'].includes(cmd)) {
         
         if (cmd === '星光紅毯設定') {
             await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -370,6 +470,36 @@ async function handleCommand(interaction, client) {
         }
 
         if (!isOwner && !hasAdminRole && !hasAdminPerm) return interaction.reply({ content: '❌ 很抱歉，此指令僅限幹部使用。', flags: MessageFlags.Ephemeral });
+
+        // 🌟 新增：發布市場輔助看板
+        if (cmd === '發布市場看板') {
+            const boardEmbed = new EmbedBuilder()
+                .setTitle('📊 【 Artale 楓之股｜市場輔助看板 】 📊')
+                .setDescription('👇 **請點擊下方選單，選擇您要使用的市場服務：**\n\n' +
+                    '🔍 **即時查價**：查詢全服最新物價與趨勢K線圖\n' +
+                    '🎯 **套利雷達**：列出目前全市場溢價與折價排行 Top 5\n' +
+                    '💳 **課金指南**：台幣最大化轉換楓幣的高效率方案\n' +
+                    '🧮 **衝卷試算**：AI 動態規劃最佳造價與停損評估\n' +
+                    '🚨 **價格警報**：設定個人專屬的觸價私訊推播提醒\n' +
+                    '📋 **我的警報**：查看與管理目前已設定的警報清單\n\n' +
+                    '*💡 提示：所有查詢結果皆預設為「僅您可見」，您可以點擊結果下方的【📢 發布】按鈕，將重要資訊分享給群友！*')
+                .setColor('#F59E0B');
+
+            const actionSelect = new StringSelectMenuBuilder()
+                .setCustomId('select_market_action')
+                .setPlaceholder('請選擇市場功能...')
+                .addOptions([
+                    { label: '即時查價', description: '查詢特定物品最新價格', value: 'market_price', emoji: '🔍' },
+                    { label: '套利雷達', description: '全服漲跌幅最大排行榜', value: 'market_arbitrage', emoji: '🎯' },
+                    { label: '課金指南', description: '台幣換楓幣最佳方案', value: 'market_cash', emoji: '💳' },
+                    { label: '衝卷試算', description: '計算期望造價與停損', value: 'market_scroll', emoji: '🧮' },
+                    { label: '設定價格警報', description: '跌破或突破指定價格時私訊通知', value: 'market_alert_set', emoji: '🚨' },
+                    { label: '我的警報清單', description: '管理已設定的警報', value: 'market_alert_list', emoji: '📋' }
+                ]);
+
+            await interaction.reply({ content: '✅ 市場看板發布成功！', flags: MessageFlags.Ephemeral });
+            return interaction.channel.send({ embeds: [boardEmbed], components: [new ActionRowBuilder().addComponents(actionSelect)] });
+        }
 
         if (cmd === '解鎖權限') {
             const row = new ActionRowBuilder().addComponents(
