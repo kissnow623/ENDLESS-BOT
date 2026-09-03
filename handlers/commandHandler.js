@@ -1,11 +1,11 @@
 // handlers/commandHandler.js
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, PermissionsBitField, MessageFlags } = require('discord.js');
 const { db, addDbStat, getCache } = require('../utils/firebase');
-const { config, getAgentRoleId, MARKET_CHANNEL_ID } = require('../config/constants'); 
+const { config, getAgentRoleId, MARKET_CHANNEL_ID } = require('../config/constants');
 const { generateMemberLeaderboard, generateFriendLeaderboard, updateNickname } = require('../utils/guildHelpers');
 const { getTaiwanTime, updateBoard, checkIsAgent, buildAgentStatMessage, generateScheduleEmbed, broadcastToManagementAreas } = require('../utils/echoHelpers');
 const { sendStickerViaWebhook } = require('../utils/stickerHelpers');
-const { getMarketItem, getAllMarketItems, searchMarketItems } = require('../utils/marketHelpers'); 
+const { getMarketItem, getAllMarketItems } = require('../utils/marketHelpers'); 
 
 const cashItemWcPrices = {
     "AP初始化卷軸": 400, "SP初始化卷軸": 300, "高級瞬移之石": 36.36, "突襲額外獎勵票券": 171.42, "飄雪結晶": 27.27, "凍結加持器": 40.91, "高效能喇叭UP": 127.28, "戒指精選卷軸轉蛋券": 190,
@@ -24,7 +24,7 @@ async function handleCommand(interaction, client) {
     const hasAdminRole = interaction.member?.roles?.cache?.hasAny(...config.roles.adminRoles); 
     const hasAdminPerm = interaction.member?.permissions?.has(PermissionsBitField.Flags.Administrator); 
 
-    // 🌟 身分組驗證：判斷是否為公會成員
+    // 🌟 身分組驗證：判斷是否為公會成員 (決定是否有權限發布到公會頻道)
     const isGuildMember = interaction.member?.roles?.cache?.has(config.roles.guildMember) || interaction.member?.roles?.cache?.some(r => r.name.includes('公會'));
 
     // ==========================================
@@ -40,8 +40,6 @@ async function handleCommand(interaction, client) {
 
             const action = interaction.values[0];
 
-            // ⚠️ 已經移除 interaction.message.edit() 防止 Modal 衝突崩潰
-
             if (action === 'market_price') {
                 const modal = new ModalBuilder().setCustomId('modal_market_price').setTitle('🔍 即時查價系統 (支援關鍵字)');
                 modal.addComponents(new ActionRowBuilder().addComponents(
@@ -51,6 +49,9 @@ async function handleCommand(interaction, client) {
             }
 
             if (action === 'market_arbitrage') {
+                // 自動重置選單狀態
+                interaction.message.edit({ components: interaction.message.components }).catch(() => {});
+
                 const allItems = getAllMarketItems();
                 let validItems = allItems.filter(i => i.rawTrend !== 0 && !isNaN(i.rawTrend)).sort((a, b) => b.rawTrend - a.rawTrend);
                 
@@ -77,6 +78,8 @@ async function handleCommand(interaction, client) {
             }
 
             if (action === 'market_scroll') {
+                // 自動重置選單狀態
+                interaction.message.edit({ components: interaction.message.components }).catch(() => {});
                 return interaction.reply({ 
                     content: '🧮 **衝卷試算** 包含多階混卷、純白救援等高階參數，Discord 的下拉表單無法容納這麼多欄位。\n👉 **請直接在對話框輸入 `/衝卷試算` 來呼叫完整版 AI 計算機！**', 
                     flags: MessageFlags.Ephemeral 
@@ -93,7 +96,10 @@ async function handleCommand(interaction, client) {
                 return interaction.showModal(modal);
             }
 
+            // 🌟 加入完整的我的警報查詢與「刪除機制」
             if (action === 'market_alert_list') {
+                // 自動重置選單狀態
+                interaction.message.edit({ components: interaction.message.components }).catch(() => {});
                 await interaction.deferReply({ flags: MessageFlags.Ephemeral });
                 try {
                     const snapshot = await db.collection('priceAlerts').where('userId', '==', interaction.user.id).get();
@@ -102,19 +108,50 @@ async function handleCommand(interaction, client) {
                     }
                     
                     let desc = '🚨 **您的專屬價格推播警報清單**\n\n';
+                    const deleteOptions = [];
+                    
                     snapshot.forEach(doc => {
                         const data = doc.data();
                         desc += `🔹 **${data.itemName}** ➔ 當 ${data.condition} \`${data.targetPrice} 萬\` 時通知\n`;
+                        
+                        // 建立刪除選項
+                        deleteOptions.push(new StringSelectMenuOptionBuilder()
+                            .setLabel(`刪除: ${data.itemName.substring(0, 50)}`)
+                            .setDescription(`條件: ${data.condition} ${data.targetPrice}萬`)
+                            .setValue(doc.id) // 用資料庫的文檔 ID 當作值，確保精準刪除
+                        );
                     });
                     
                     const embed = new EmbedBuilder().setColor(0xEF4444).setDescription(desc);
-                    return interaction.editReply({ embeds: [embed] });
+                    const components = [];
+                    
+                    if (deleteOptions.length > 0) {
+                        components.push(new ActionRowBuilder().addComponents(
+                            new StringSelectMenuBuilder()
+                                .setCustomId('select_delete_alert')
+                                .setPlaceholder('🗑️ 點擊這裡選擇要刪除的警報...')
+                                .addOptions(deleteOptions.slice(0, 25))
+                        ));
+                    }
+                    
+                    return interaction.editReply({ embeds: [embed], components });
                 } catch (error) {
                     return interaction.editReply('❌ 無法連線至警報資料庫，請稍後再試。');
                 }
             }
 
             return interaction.reply({ content: '🛠️ 此功能正在連線調整中，即將開放！', flags: MessageFlags.Ephemeral });
+        }
+
+        // 🌟 新增：處理刪除警報的下拉選單
+        if (interaction.customId === 'select_delete_alert') {
+            const alertId = interaction.values[0];
+            try {
+                await db.collection('priceAlerts').doc(alertId).delete();
+                return interaction.update({ content: '✅ **指定的警報已成功刪除！** 不會再被打擾囉！', embeds: [], components: [] });
+            } catch (err) {
+                return interaction.reply({ content: '❌ 刪除警報時發生錯誤，請稍後再試。', flags: MessageFlags.Ephemeral });
+            }
         }
 
         // 2️⃣ 處理查價結果的二次下拉選單 (智能模糊搜尋結果選擇)
@@ -166,7 +203,7 @@ async function handleCommand(interaction, client) {
             
             if (uniqueItems.length > 1) {
                 const options = uniqueItems.slice(0, 25).map(r => {
-                    const safeName = r.name.substring(0, 100); // 確保長度符合 Discord 規範
+                    const safeName = r.name.substring(0, 100); 
                     const safeDesc = `目前報價: ${r.price || '無報價'}`.substring(0, 100);
                     return new StringSelectMenuOptionBuilder().setLabel(safeName).setValue(safeName).setDescription(safeDesc);
                 });
@@ -250,7 +287,7 @@ async function handleCommand(interaction, client) {
                 createdAt: Date.now()
             });
 
-            return interaction.reply({ content: `✅ **警報寫入成功！**\n資料庫已記錄：當【${item}】${condition} \`${price} 萬\` 時，將啟動背景推播通知您！`, flags: MessageFlags.Ephemeral });
+            return interaction.reply({ content: `✅ **警報寫入成功！**\n資料庫已記錄：當【${item}】${condition} \`${price} 萬\` 時，將啟動背景推播私訊通知您！`, flags: MessageFlags.Ephemeral });
         }
     }
 
@@ -274,7 +311,6 @@ async function handleCommand(interaction, client) {
                 
                 if (!itemData) return interaction.reply({ content: '資料已過期，無法發布。', flags: MessageFlags.Ephemeral });
 
-                // 公會頻道發布全圖，親友頻道發布 24H 圖
                 const displayChartUrl = isGuildChannel ? itemData.chartUrl : (itemData.chartUrl1Day || itemData.chartUrl);
                 const viewLevelText = isGuildChannel ? '全區間線圖 (公會權限)' : '24小時線圖 (親友權限)';
 
@@ -289,14 +325,13 @@ async function handleCommand(interaction, client) {
                     await targetChannel.send({ embeds: [embed] });
                     return interaction.update({ content: `✅ 已成功將查價資訊分享至 ${channelName}！`, components: [] });
                 } catch (err) {
-                    console.error('發送查價分享失敗:', err);
+                    console.error('發送分享失敗:', err);
                     return interaction.reply({ content: `❌ 發布失敗，機器人可能沒有該頻道的發言權限。`, flags: MessageFlags.Ephemeral });
                 }
             }
 
             // 處理其他系統發布 (直接轉傳原 Embed)
             if (cId.startsWith('arbitrage_') || cId.startsWith('cash_') || cId.startsWith('scroll_')) {
-                // 🌟 防護檢查：確保訊息內有 embed 才執行發布
                 if (!interaction.message.embeds || interaction.message.embeds.length === 0) {
                     return interaction.reply({ content: '❌ 無法取得原始圖表，發布失敗。', flags: MessageFlags.Ephemeral });
                 }
@@ -311,7 +346,7 @@ async function handleCommand(interaction, client) {
                     await targetChannel.send({ embeds: [originalEmbed] });
                     return interaction.update({ content: `✅ 已成功分享至 ${channelName}！`, components: [] });
                 } catch (err) {
-                    console.error('發送系統分享失敗:', err);
+                    console.error('發送分享失敗:', err);
                     return interaction.reply({ content: `❌ 發布失敗，機器人可能沒有該頻道的發言權限。`, flags: MessageFlags.Ephemeral });
                 }
             }
@@ -956,7 +991,7 @@ async function handleCommand(interaction, client) {
             } else {
                 if (field === 'managementArea') { doc.channels.push(interaction.channelId); } 
                 else {
-                    const ReserveBtnRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('btn_reserve').setLabel('📝 預約迴響時間').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('btn_refresh_board').setLabel('🔄 手動刷新看板').setStyle(ButtonStyle.Secondary));
+                    const ReserveBtnRow = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('btn_reserve').setLabel('📝 預約迴響時間').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('btn_refresh_board').setLabel('🔄 手掌握看板').setStyle(ButtonStyle.Secondary));
                     const msg = await interaction.channel.send({ content: '載入中...', components: field === 'publicBoards' ? [ReserveBtnRow] : [] });
                     doc.list.push({ channelId: interaction.channelId, messageId: msg.id });
                 }
