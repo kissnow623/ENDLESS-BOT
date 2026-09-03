@@ -5,23 +5,22 @@ const { config, getAgentRoleId, MARKET_CHANNEL_ID } = require('../config/constan
 const { generateMemberLeaderboard, generateFriendLeaderboard, updateNickname } = require('../utils/guildHelpers');
 const { getTaiwanTime, updateBoard, checkIsAgent, buildAgentStatMessage, generateScheduleEmbed, broadcastToManagementAreas } = require('../utils/echoHelpers');
 const { sendStickerViaWebhook } = require('../utils/stickerHelpers');
-const { getMarketItem, getAllMarketItems, searchMarketItems } = require('../utils/marketHelpers'); 
+const { getMarketItem, getAllMarketItems } = require('../utils/marketHelpers'); 
 
 const cashItemWcPrices = {
     "AP初始化卷軸": 400, "SP初始化卷軸": 300, "高級瞬移之石": 36.36, "突襲額外獎勵票券": 171.42, "飄雪結晶": 27.27, "凍結加持器": 40.91, "高效能喇叭UP": 127.28, "戒指精選卷軸轉蛋券": 190,
     "神祕背包": 250, "幸運滿滿轉蛋券": 190, "仲夏假期轉蛋券": 190
 };
 
-// 🌟 指定的頻道 ID
-const ALLOWED_MARKET_CHANNEL_ID = '1544604459085070346'; // 市場功能限定使用頻道
-const GUILD_CHANNEL_ID = '1539971422842261601'; // 發布目標：公會頻道
-const FRIEND_CHANNEL_ID = '1544604459085070346'; // 發布目標：親友閒聊
+const ALLOWED_MARKET_CHANNEL_ID = '1544604459085070346'; 
+const GUILD_CHANNEL_ID = '1539971422842261601'; 
+const FRIEND_CHANNEL_ID = '1544604459085070346'; 
 
 // ==========================================
-// 🤖 核心引擎：AI 盤勢動態診斷 (內建 21 種專業語錄)
+// 🤖 核心引擎：AI 盤勢動態診斷
 // ==========================================
 function getAITrendAnalysis(itemName, trendPercent) {
-    const seed = itemName.length + Math.floor(Math.abs(trendPercent * 100)); // 利用名稱與數值產生偽隨機判定
+    const seed = itemName.length + Math.floor(Math.abs(trendPercent * 100)); 
     const rate = parseFloat(trendPercent);
 
     if (rate >= 15) {
@@ -77,6 +76,71 @@ function getAITrendAnalysis(itemName, trendPercent) {
 }
 
 // ==========================================
+// 📈 輔助函式：新增實體資產與模擬炒股
+// ==========================================
+async function addAssetToDb(userId, itemName, qty, cost) {
+    const docRef = db.collection('userAssets').doc(userId);
+    const doc = await docRef.get();
+    let data = doc.exists ? doc.data() : { items: {} };
+    if (!data.items) data.items = {};
+
+    if (data.items[itemName]) {
+        const oldQty = data.items[itemName].qty;
+        const oldCost = data.items[itemName].cost;
+        const newQty = oldQty + qty;
+        const newAvg = newQty > 0 ? ((oldQty * oldCost) + (qty * cost)) / newQty : 0;
+        data.items[itemName] = { qty: newQty, cost: newAvg };
+    } else {
+        data.items[itemName] = { qty: qty, cost: cost };
+    }
+    await docRef.set(data, { merge: true });
+    addDbStat('write');
+}
+
+async function processPaperTrade(interaction, itemName, qty, action, currentPrice, isUpdate = false) {
+    if (currentPrice <= 0) {
+        const msg = '❌ 該物品目前無有效報價，無法交易。';
+        return isUpdate ? interaction.update({ content: msg, components: [] }) : interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
+    }
+
+    const docRef = db.collection('paperAccounts').doc(interaction.user.id);
+    const doc = await docRef.get();
+    if (!doc.exists) {
+        const msg = '❌ 找不到您的證券戶！請先在市場看板點擊「🏆 虛擬炒股大賽」完成開戶。';
+        return isUpdate ? interaction.update({ content: msg, components: [] }) : interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
+    }
+
+    let data = doc.data();
+    if (!data.holdings) data.holdings = {};
+    
+    const totalCost = qty * currentPrice;
+
+    if (action === '買入') {
+        if (data.cash < totalCost) {
+            const msg = `❌ 資金不足！買入需 \`${totalCost.toFixed(2)} 萬\`，您只剩 \`${data.cash.toFixed(2)} 萬\`。`;
+            return isUpdate ? interaction.update({ content: msg, components: [] }) : interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
+        }
+        data.cash -= totalCost;
+        data.holdings[itemName] = (data.holdings[itemName] || 0) + qty;
+    } else if (action === '賣出') {
+        const currentQty = data.holdings[itemName] || 0;
+        if (currentQty < qty) {
+            const msg = `❌ 庫存不足！您目前只有 ${currentQty} 個 ${itemName}。`;
+            return isUpdate ? interaction.update({ content: msg, components: [] }) : interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
+        }
+        data.cash += totalCost;
+        data.holdings[itemName] -= qty;
+        if (data.holdings[itemName] === 0) delete data.holdings[itemName];
+    }
+
+    await docRef.set(data, { merge: true });
+    addDbStat('write');
+
+    const msg = `✅ 成功以單價 \`${currentPrice} 萬\` **${action}** ${qty} 個 **${itemName}**！\n交割總金額：\`${totalCost.toFixed(2)} 萬\``;
+    return isUpdate ? interaction.update({ content: msg, embeds: [], components: [] }) : interaction.reply({ content: msg, flags: MessageFlags.Ephemeral });
+}
+
+// ==========================================
 // 📱 核心引擎：構建「籌碼K線 App」面板
 // ==========================================
 function buildMarketMessage(itemData, activeTf, isGuildMember, clientUser) {
@@ -92,8 +156,8 @@ function buildMarketMessage(itemData, activeTf, isGuildMember, clientUser) {
     const safeName = itemData.name.substring(0, 50);
 
     const vipNote = isGuildMember 
-        ? "💡 如果有查詢48H以上需求，請檢視並加入Artale楓之谷VIP" 
-        : "💡 如果有查詢24H以上需求，請檢視並加入Artale楓之谷VIP";
+        ? "💡 如果有查詢48H以上需求，請檢視並加入Artale楓之谷VIP\n*(註：若切換按鈕後圖表未變化，表示市場暫無該時段圖表)*" 
+        : "💡 如果有查詢24H以上需求，請檢視並加入Artale楓之谷VIP\n*(註：若切換按鈕後圖表未變化，表示市場暫無該時段圖表)*";
 
     const embed = new EmbedBuilder()
         .setColor(0x0f172a)
@@ -104,8 +168,6 @@ function buildMarketMessage(itemData, activeTf, isGuildMember, clientUser) {
 
     if (displayChartUrl) embed.setImage(displayChartUrl);
 
-    // 🌟 第一排：App 導航按鈕 (依照要求改為 6H/12H/24H/48H)
-    // 加入 market_ 前綴，確保總管 interactionCreate 放行
     const tfs = [{ id: '6h', label: '6H' }, { id: '12h', label: '12H' }, { id: '24h', label: '24H' }, { id: '48h', label: '48H' }];
     const tfRow = new ActionRowBuilder();
     tfs.forEach(tf => {
@@ -117,12 +179,11 @@ function buildMarketMessage(itemData, activeTf, isGuildMember, clientUser) {
         );
     });
 
-    // 🌟 第二排：發布路由按鈕 (加上 publish_ 前綴確保放行)
     const btnRow = new ActionRowBuilder();
     if (isGuildMember) btnRow.addComponents(new ButtonBuilder().setCustomId(`publish_price_pubG_${safeName}_${activeTf}`).setLabel('📢 發布至公會').setStyle(ButtonStyle.Success));
     btnRow.addComponents(
         new ButtonBuilder().setCustomId(`publish_price_pubF_${safeName}_${activeTf}`).setLabel('📢 發布至親友').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setLabel('🌐 籌碼網頁版').setStyle(ButtonStyle.Link).setURL('https://artalestock.netlify.app/') 
+        new ButtonBuilder().setLabel('🌐 前往Artale楓之谷').setStyle(ButtonStyle.Link).setURL('https://artalestock.netlify.app/') 
     );
 
     return { embeds: [embed], components: [tfRow, btnRow] };
@@ -135,35 +196,131 @@ async function handleCommand(interaction, client) {
     const hasAdminRole = interaction.member?.roles?.cache?.hasAny(...config.roles.adminRoles); 
     const hasAdminPerm = interaction.member?.permissions?.has(PermissionsBitField.Flags.Administrator); 
 
-    // 🌟 身分組驗證：判斷是否為公會成員 (決定是否有權限發布到公會頻道)
     const isGuildMember = interaction.member?.roles?.cache?.has(config.roles.guildMember) || interaction.member?.roles?.cache?.some(r => r.name.includes('公會'));
 
     // ==========================================
-    // 🌟 【籌碼K線：互動式時間軸按鈕攔截】
+    // 🌟 【動態按鈕攔截區：K線切換、資產操作、炒股】
     // ==========================================
-    if (interaction.isButton() && interaction.customId.startsWith('market_tf_')) {
-        const parts = interaction.customId.split('_'); // market_tf_6h_itemname
-        const targetTf = parts[2]; // 6h, 12h, 24h, 48h
-        const itemName = parts.slice(3).join('_');
+    if (interaction.isButton()) {
+        const cId = interaction.customId;
 
-        // 🔒 動態付費牆：親友團無法觀看 48H
-        if (!isGuildMember && ['48h'].includes(targetTf)) {
-            return interaction.reply({ content: `🔒 **籌碼K線專業版 權限不足！**\n親友團僅開放 24H 內走勢圖，欲解鎖 48H 以上專業線圖，請成為公會成員！`, flags: MessageFlags.Ephemeral });
+        if (cId.startsWith('market_tf_')) {
+            const parts = cId.split('_'); 
+            const targetTf = parts[2]; 
+            const itemName = parts.slice(3).join('_');
+
+            if (!isGuildMember && ['48h'].includes(targetTf)) {
+                return interaction.reply({ content: `🔒 **籌碼K線專業版 權限不足！**\n親友團僅開放 24H 內走勢圖，欲解鎖 48H 以上專業線圖，請成為公會成員！`, flags: MessageFlags.Ephemeral });
+            }
+
+            const itemData = getMarketItem(itemName);
+            if (!itemData) return interaction.reply({ content: '❌ 資料已過期，請重新發起查詢。', flags: MessageFlags.Ephemeral });
+
+            const payload = buildMarketMessage(itemData, targetTf, isGuildMember, client.user);
+            return interaction.update({ embeds: payload.embeds, components: payload.components });
         }
 
-        const itemData = getMarketItem(itemName);
-        if (!itemData) return interaction.reply({ content: '❌ 資料已過期，請重新發起查詢。', flags: MessageFlags.Ephemeral });
+        if (cId === 'market_btn_portfolio_add') {
+            const modal = new ModalBuilder().setCustomId('modal_portfolio_add_search').setTitle('💼 新增個人資產庫');
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('item_name').setLabel("物品關鍵字").setStyle(TextInputStyle.Short).setRequired(true)),
+                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('qty').setLabel("持有數量").setStyle(TextInputStyle.Short).setRequired(true)),
+                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('cost').setLabel("平均購入成本 (單件/萬)").setStyle(TextInputStyle.Short).setRequired(true))
+            );
+            return interaction.showModal(modal);
+        }
 
-        const payload = buildMarketMessage(itemData, targetTf, isGuildMember, client.user);
-        return interaction.update({ embeds: payload.embeds, components: payload.components });
+        if (cId === 'market_btn_paper_buy' || cId === 'market_btn_paper_sell') {
+            const action = cId.includes('buy') ? '買入' : '賣出';
+            const modal = new ModalBuilder().setCustomId(`modal_paper_${action}_search`).setTitle(`🛒 模擬炒股：${action}委託`);
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('item_name').setLabel("物品關鍵字").setStyle(TextInputStyle.Short).setRequired(true)),
+                new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('qty').setLabel("委託數量").setStyle(TextInputStyle.Short).setRequired(true))
+            );
+            return interaction.showModal(modal);
+        }
+
+        if (cId === 'market_btn_paper_rank') {
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+            const snapshot = await db.collection('paperAccounts').get();
+            if (snapshot.empty) return interaction.editReply('目前還沒有人開戶炒股！');
+            
+            let ranks = [];
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                let totalValue = data.cash || 0;
+                if (data.holdings) {
+                    for (const [name, qty] of Object.entries(data.holdings)) {
+                        const marketData = getMarketItem(name);
+                        const currentPrice = marketData ? (marketData.rawPrice || 0) : 0;
+                        totalValue += qty * currentPrice;
+                    }
+                }
+                ranks.push({ name: data.username || '未知股神', value: totalValue });
+            });
+            
+            ranks.sort((a, b) => b.value - a.value);
+            let desc = ranks.slice(0, 10).map((r, i) => {
+                let rankIcon = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `**${i+1}.**`;
+                return `${rankIcon} **${r.name}** ➔ 淨值: \`${r.value.toFixed(2)} 萬\``;
+            }).join('\n\n');
+            
+            const embed = new EmbedBuilder().setColor(0x10B981).setTitle('🏆 楓之谷巴菲特：虛擬炒股淨值排行榜').setDescription(desc);
+            return interaction.editReply({ embeds: [embed] });
+        }
+
+        if (cId.startsWith('publish_')) {
+            const isGuildChannel = cId.includes('_pubG_');
+            const targetChannelId = isGuildChannel ? GUILD_CHANNEL_ID : FRIEND_CHANNEL_ID;
+            const channelName = isGuildChannel ? '🥳｜公會頻道' : '👄｜親友閒聊relax';
+
+            const targetChannel = await client.channels.fetch(targetChannelId).catch(() => null);
+            if (!targetChannel) return interaction.reply({ content: `❌ 找不到目標頻道 (${targetChannelId})，無法發布。`, flags: MessageFlags.Ephemeral });
+
+            if (cId.startsWith('publish_price_')) {
+                const parts = cId.split('_'); 
+                const activeTf = parts[parts.length - 1]; 
+                const itemName = parts.slice(3, parts.length - 1).join('_'); 
+                
+                const itemData = getMarketItem(itemName);
+                if (!itemData) return interaction.reply({ content: '資料已過期，無法發布。', flags: MessageFlags.Ephemeral });
+
+                const payload = buildMarketMessage(itemData, activeTf, isGuildMember, client.user);
+                const pubEmbed = EmbedBuilder.from(payload.embeds[0]);
+                pubEmbed.setTitle(`📊 籌碼K線：${itemData.name} (由 ${interaction.user.username} 分享)`);
+                
+                try {
+                    await targetChannel.send({ embeds: [pubEmbed] });
+                    return interaction.update({ content: `✅ 已成功將查價資訊分享至 ${channelName}！`, components: [] });
+                } catch (err) {
+                    return interaction.reply({ content: `❌ 發布失敗，機器人可能沒有該頻道的發言權限。`, flags: MessageFlags.Ephemeral });
+                }
+            }
+
+            if (cId.startsWith('publish_arbitrage_') || cId.startsWith('publish_cash_')) {
+                if (!interaction.message.embeds || interaction.message.embeds.length === 0) {
+                    return interaction.reply({ content: '❌ 無法取得原始圖表，發布失敗。', flags: MessageFlags.Ephemeral });
+                }
+
+                const originalEmbed = EmbedBuilder.from(interaction.message.embeds[0]);
+                if (cId.startsWith('publish_arbitrage_')) originalEmbed.setTitle(`🎯 折溢排行 (由 ${interaction.user.username} 分享)`);
+                if (cId.startsWith('publish_cash_')) originalEmbed.setTitle(`💳 課金最佳化轉換試算 (由 ${interaction.user.username} 分享)`);
+                
+                try {
+                    await targetChannel.send({ embeds: [originalEmbed] });
+                    return interaction.update({ content: `✅ 已成功分享至 ${channelName}！`, components: [] });
+                } catch (err) {
+                    return interaction.reply({ content: `❌ 發布失敗，機器人可能沒有該頻道的發言權限。`, flags: MessageFlags.Ephemeral });
+                }
+            }
+        }
     }
 
     // ==========================================
-    // 🌟 【市場看板：元件攔截處理區】 (選單、表單、按鈕)
+    // 🌟 【市場看板：元件攔截處理區】
     // ==========================================
     if (interaction.isStringSelectMenu()) {
         
-        // 1️⃣ 處理主看板選單
         if (interaction.customId === 'select_market_action') {
             if (interaction.channelId !== ALLOWED_MARKET_CHANNEL_ID) {
                 return interaction.reply({ content: `❌ 市場看板功能請移駕至 <#${ALLOWED_MARKET_CHANNEL_ID}> 頻道使用喔！`, flags: MessageFlags.Ephemeral });
@@ -188,7 +345,7 @@ async function handleCommand(interaction, client) {
                 let pText = validItems.slice(0, 5).map((i, idx) => `**${idx+1}.** ${i.name} \n└ 📈 \`+${i.rawTrend.toFixed(2)}%\` (${i.price})`).join('\n\n');
                 let dText = validItems.slice(-5).reverse().map((i, idx) => `**${idx+1}.** ${i.name} \n└ 📉 \`${i.rawTrend.toFixed(2)}%\` (${i.price})`).join('\n\n');
 
-                const embed = new EmbedBuilder().setColor(0x3B82F6).setTitle('🎯 市場行情套利雷達')
+                const embed = new EmbedBuilder().setColor(0x3B82F6).setTitle('🎯 折溢排行')
                     .addFields({ name: '🔥 【溢價急漲區】(建議出售)', value: pText || '無', inline: true }, { name: '🧊 【折價超跌區】(建議掃貨)', value: dText || '無', inline: true });
 
                 const publishBtn = new ActionRowBuilder();
@@ -205,14 +362,6 @@ async function handleCommand(interaction, client) {
                     new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('wc_rate').setLabel("點數比值 (不填預設為 6.63)").setStyle(TextInputStyle.Short).setRequired(false).setValue('6.63'))
                 );
                 return interaction.showModal(modal);
-            }
-
-            if (action === 'market_scroll') {
-                interaction.message.edit({ components: interaction.message.components }).catch(() => {});
-                return interaction.reply({ 
-                    content: '🧮 **衝卷試算** 包含多階混卷、純白救援等高階參數，Discord 的下拉表單無法容納這麼多欄位。\n👉 **請直接在對話框輸入 `/衝卷試算` 來呼叫完整版 AI 計算機！**', 
-                    flags: MessageFlags.Ephemeral 
-                });
             }
 
             if (action === 'market_alert_set') {
@@ -264,10 +413,105 @@ async function handleCommand(interaction, client) {
                 }
             }
 
+            if (action === 'portfolio_view') {
+                interaction.message.edit({ components: interaction.message.components }).catch(() => {});
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+                
+                const doc = await db.collection('userAssets').doc(interaction.user.id).get();
+                const items = doc.exists ? (doc.data().items || {}) : {};
+                
+                let totalCost = 0; let totalValue = 0; let desc = "";
+                
+                for (const [name, info] of Object.entries(items)) {
+                    if (info.qty <= 0) continue;
+                    const marketData = getMarketItem(name);
+                    const currentPrice = marketData ? (marketData.rawPrice || 0) : info.cost;
+                    const itemCostTotal = info.qty * info.cost;
+                    const itemValueTotal = info.qty * currentPrice;
+                    const pnl = itemValueTotal - itemCostTotal;
+                    const pnlPercent = itemCostTotal > 0 ? (pnl / itemCostTotal) * 100 : 0;
+                    
+                    totalCost += itemCostTotal; totalValue += itemValueTotal;
+                    const icon = pnl >= 0 ? '🔴' : '🟢'; 
+                    desc += `**${name}** (持有: ${info.qty})\n└ 成本: \`${info.cost.toFixed(2)}萬\` | 現價: \`${currentPrice.toFixed(2)}萬\`\n└ 損益: ${icon} \`${pnl.toFixed(2)}萬\` (${pnlPercent.toFixed(2)}%)\n\n`;
+                }
+
+                if (!desc) desc = "📭 目前尚無資產，點擊下方按鈕開始紀錄您的真實庫存！";
+
+                const totalPnl = totalValue - totalCost;
+                const totalPnlPercent = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
+                const mainIcon = totalPnl >= 0 ? '🔴' : '🟢';
+
+                const embed = new EmbedBuilder().setColor(0x8B5CF6).setTitle(`💼 ${interaction.user.username} 的個人資產庫`)
+                    .setDescription(`**投入總成本：** \`${totalCost.toFixed(2)} 萬\`\n**目前總市值：** \`${totalValue.toFixed(2)} 萬\`\n**未實現損益：** ${mainIcon} \`${totalPnl.toFixed(2)} 萬\` (${totalPnlPercent.toFixed(2)}%)\n\n${desc}`)
+                    .setTimestamp();
+
+                const btnRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('market_btn_portfolio_add').setLabel('➕ 新增持倉紀錄').setStyle(ButtonStyle.Success)
+                );
+                return interaction.editReply({ embeds: [embed], components: [btnRow] });
+            }
+
+            if (action === 'paper_trade') {
+                interaction.message.edit({ components: interaction.message.components }).catch(() => {});
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+                
+                const docRef = db.collection('paperAccounts').doc(interaction.user.id);
+                const doc = await docRef.get();
+                if (!doc.exists) {
+                    await docRef.set({ cash: 1000000, holdings: {}, username: interaction.user.username });
+                    addDbStat('write');
+                    return interaction.editReply({ content: '🎉 **開戶成功！** 已為您匯入初始資金 `1,000,000 萬` (100億) 虛擬楓幣！\n請再次點擊「虛擬炒股大賽」查看您的帳戶並開始交易。' });
+                }
+                
+                let data = doc.data();
+                let totalValue = data.cash;
+                let hDesc = "";
+                
+                if (data.holdings) {
+                    for (const [name, qty] of Object.entries(data.holdings)) {
+                        const marketData = getMarketItem(name);
+                        const currentPrice = marketData ? (marketData.rawPrice || 0) : 0;
+                        const value = qty * currentPrice;
+                        totalValue += value;
+                        if (qty > 0) hDesc += `🔹 **${name}**: ${qty} 個 (現值: \`${value.toFixed(2)} 萬\`)\n`;
+                    }
+                }
+                
+                const embed = new EmbedBuilder().setColor(0xF59E0B).setTitle(`🏆 ${interaction.user.username} 的虛擬證券戶`)
+                    .addFields(
+                        { name: '💰 可用現金', value: `\`${data.cash.toFixed(2)} 萬\``, inline: true },
+                        { name: '📈 帳戶總淨值', value: `\`${totalValue.toFixed(2)} 萬\``, inline: true },
+                        { name: '📦 庫存明細', value: hDesc || '目前無庫存', inline: false }
+                    );
+
+                const btnRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('market_btn_paper_buy').setLabel('🛒 買入').setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder().setCustomId('market_btn_paper_sell').setLabel('💰 賣出').setStyle(ButtonStyle.Danger),
+                    new ButtonBuilder().setCustomId('market_btn_paper_rank').setLabel('🏆 看排行榜').setStyle(ButtonStyle.Secondary)
+                );
+                return interaction.editReply({ embeds: [embed], components: [btnRow] });
+            }
+
+            if (action === 'whale_alert') {
+                interaction.message.edit({ components: interaction.message.components }).catch(() => {});
+                const allItems = getAllMarketItems() || [];
+                const whales = allItems.filter(i => Math.abs(i.rawTrend) >= 15 && i.rawPrice > 0).sort((a, b) => Math.abs(b.rawTrend) - Math.abs(a.rawTrend));
+
+                if (whales.length === 0) return interaction.reply({ content: '🌊 目前市場風平浪靜，沒有偵測到巨鯨大戶的異常掃貨或倒貨跡象。', flags: MessageFlags.Ephemeral });
+
+                let desc = whales.map(i => {
+                    const icon = i.rawTrend > 0 ? '🚀 【大戶掃貨暴漲】' : '🩸 【大戶倒貨暴跌】';
+                    return `**${i.name}**\n└ ${icon} \`${i.trend}\` (現價: ${i.price})`;
+                }).join('\n\n');
+
+                const embed = new EmbedBuilder().setColor(0xEC4899).setTitle('🐳 巨鯨大戶異動雷達 (15% 振幅監控)').setDescription(desc).setFooter({ text: '※ 背景排程警報已啟動監控', iconURL: client.user.displayAvatarURL() });
+                return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+            }
+
             return interaction.reply({ content: '🛠️ 此功能正在連線調整中，即將開放！', flags: MessageFlags.Ephemeral });
         }
 
-        // 🌟 刪除警報的下拉選單攔截
         if (interaction.customId === 'market_delete_alert') {
             const alertId = interaction.values[0];
             try {
@@ -278,24 +522,21 @@ async function handleCommand(interaction, client) {
             }
         }
 
-        // 2️⃣ 處理查價結果的二次下拉選單
         if (interaction.customId === 'select_market_price_result') {
             const itemName = interaction.values[0];
             const itemData = getMarketItem(itemName);
             
             if (!itemData) return interaction.reply({ content: `🔍 找不到 **${itemName}** 的報價！`, flags: MessageFlags.Ephemeral });
 
-            // 呼叫 App 面板
             const defaultTf = '24h';
             const payload = buildMarketMessage(itemData, defaultTf, isGuildMember, client.user);
 
             return interaction.update({ content: '✅ 查詢成功！', embeds: payload.embeds, components: payload.components });
         }
 
-        // 🌟 警報第二步：選好道具後，彈出設定目標價的表單
         if (interaction.customId === 'market_alert_select_item') {
             const itemName = interaction.values[0];
-            const safeName = itemName.substring(0, 50); // 確保不超過 API 限制
+            const safeName = itemName.substring(0, 50); 
             
             const modal = new ModalBuilder().setCustomId(`market_alert_config_${safeName}`).setTitle(`🚨 設定: ${safeName}`);
             modal.addComponents(
@@ -304,94 +545,123 @@ async function handleCommand(interaction, client) {
             );
             return interaction.showModal(modal);
         }
+
+        if (interaction.customId === 'select_portfolio_add_result') {
+            const parts = interaction.values[0].split('_');
+            const qty = parseInt(parts[0]);
+            const cost = parseFloat(parts[1]);
+            const itemName = parts.slice(2).join('_');
+            await addAssetToDb(interaction.user.id, itemName, qty, cost);
+            return interaction.update({ content: `✅ 成功將 **${itemName}** (數量: ${qty}, 成本: ${cost}萬) 加入您的實體資產庫！\n請重新點擊看板查看更新後的「💼 個人資產庫」。`, components: [] });
+        }
+
+        if (interaction.customId === 'select_paper_trade_result') {
+            const parts = interaction.values[0].split('_'); 
+            const action = parts[0] === 'buy' ? '買入' : '賣出';
+            const qty = parseInt(parts[1]);
+            const itemName = parts.slice(2).join('_');
+            const targetItem = getMarketItem(itemName);
+            
+            if (!targetItem) return interaction.reply({ content: '❌ 物品已過期', flags: MessageFlags.Ephemeral });
+            await processPaperTrade(interaction, itemName, qty, action, targetItem.rawPrice, true);
+        }
     }
 
     if (interaction.isModalSubmit()) {
         
-        // 查價的關鍵字表單
-        if (interaction.customId === 'modal_market_price') {
-            const query = (interaction.fields.getTextInputValue('item_name') || '').toLowerCase();
+        const filterUniqueItems = (query) => {
             const allItems = getAllMarketItems() || [];
-            
-            const uniqueItems = [];
-            const seenNames = new Set();
+            const uniqueItems = []; const seenNames = new Set();
             for (const item of allItems) {
-                const name = item.name || '';
-                if (name && name.toLowerCase().includes(query) && !seenNames.has(name)) {
-                    seenNames.add(name);
-                    uniqueItems.push(item);
+                if (item.name && item.name.toLowerCase().includes(query) && !seenNames.has(item.name)) {
+                    seenNames.add(item.name); uniqueItems.push(item);
                 }
             }
+            return uniqueItems;
+        };
+
+        if (interaction.customId === 'modal_market_price') {
+            const query = (interaction.fields.getTextInputValue('item_name') || '').toLowerCase();
+            const uniqueItems = filterUniqueItems(query);
             
-            if (uniqueItems.length === 0) return interaction.reply({ content: `🔍 找不到包含 **${query}** 的任何物品報價！`, flags: MessageFlags.Ephemeral });
+            if (uniqueItems.length === 0) return interaction.reply({ content: `🔍 找不到包含 **${query}** 的報價！`, flags: MessageFlags.Ephemeral });
             
             if (uniqueItems.length > 1) {
-                const options = uniqueItems.slice(0, 25).map(r => {
-                    const safeName = r.name.substring(0, 100); 
-                    const safeDesc = `目前報價: ${r.price || '無報價'}`.substring(0, 100);
-                    return new StringSelectMenuOptionBuilder().setLabel(safeName).setValue(safeName).setDescription(safeDesc);
-                });
-                
-                const dropdownRow = new ActionRowBuilder().addComponents(
-                    new StringSelectMenuBuilder().setCustomId('select_market_price_result').setPlaceholder('找到多個結果，請下拉選擇精確物品...').addOptions(options)
-                );
-                
-                return interaction.reply({ content: `🔍 找到 **${uniqueItems.length}** 個包含「${query}」的物品，請從下方選單點擊查看：`, components: [dropdownRow], flags: MessageFlags.Ephemeral });
+                const options = uniqueItems.slice(0, 25).map(r => new StringSelectMenuOptionBuilder().setLabel(r.name.substring(0, 100)).setValue(r.name.substring(0, 100)).setDescription(`目前報價: ${r.price || '無報價'}`.substring(0, 100)));
+                const dropdownRow = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('select_market_price_result').setPlaceholder('找到多個結果，請選擇精確物品...').addOptions(options));
+                return interaction.reply({ content: `🔍 找到 **${uniqueItems.length}** 個符合的物品：`, components: [dropdownRow], flags: MessageFlags.Ephemeral });
             }
 
-            const itemData = uniqueItems[0];
             const defaultTf = '24h';
-            const payload = buildMarketMessage(itemData, defaultTf, isGuildMember, client.user);
-
+            const payload = buildMarketMessage(uniqueItems[0], defaultTf, isGuildMember, client.user);
             return interaction.reply({ embeds: payload.embeds, components: payload.components, flags: MessageFlags.Ephemeral });
         }
 
-        // 🌟 警報關鍵字表單 (過濾後讓使用者選)
         if (interaction.customId === 'modal_market_alert_search') {
             const query = (interaction.fields.getTextInputValue('item_name') || '').toLowerCase();
-            const allItems = getAllMarketItems() || [];
+            const uniqueItems = filterUniqueItems(query);
             
-            const uniqueItems = [];
-            const seenNames = new Set();
-            for (const item of allItems) {
-                const name = item.name || '';
-                if (name && name.toLowerCase().includes(query) && !seenNames.has(name)) {
-                    seenNames.add(name);
-                    uniqueItems.push(item);
-                }
-            }
+            if (uniqueItems.length === 0) return interaction.reply({ content: `🔍 找不到包含 **${query}** 的報價！`, flags: MessageFlags.Ephemeral });
             
-            if (uniqueItems.length === 0) return interaction.reply({ content: `🔍 找不到包含 **${query}** 的任何物品報價！`, flags: MessageFlags.Ephemeral });
-            
-            const options = uniqueItems.slice(0, 25).map(r => {
-                const safeName = r.name.substring(0, 100); 
-                const safeDesc = `目前報價: ${r.price || '無報價'}`.substring(0, 100);
-                return new StringSelectMenuOptionBuilder().setLabel(safeName).setValue(safeName).setDescription(safeDesc);
-            });
-            
-            const dropdownRow = new ActionRowBuilder().addComponents(
-                new StringSelectMenuBuilder().setCustomId('market_alert_select_item').setPlaceholder('請下拉選擇要設定警報的精確物品...').addOptions(options)
-            );
-            
-            return interaction.reply({ content: `🔍 找到 **${uniqueItems.length}** 個符合的物品，請選擇：`, components: [dropdownRow], flags: MessageFlags.Ephemeral });
+            const options = uniqueItems.slice(0, 25).map(r => new StringSelectMenuOptionBuilder().setLabel(r.name.substring(0, 100)).setValue(r.name.substring(0, 100)).setDescription(`目前報價: ${r.price || '無報價'}`.substring(0, 100)));
+            const dropdownRow = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('market_alert_select_item').setPlaceholder('請下拉選擇要設定警報的物品...').addOptions(options));
+            return interaction.reply({ content: `🔍 找到多個符合的物品，請選擇：`, components: [dropdownRow], flags: MessageFlags.Ephemeral });
         }
 
-        // 🌟 警報設定表單寫入資料庫
         if (interaction.customId.startsWith('market_alert_config_')) {
             const itemName = interaction.customId.replace('market_alert_config_', '');
             const price = interaction.fields.getTextInputValue('target_price');
             const condition = interaction.fields.getTextInputValue('condition');
             
-            await db.collection('priceAlerts').add({
-                userId: interaction.user.id,
-                userName: interaction.user.username,
-                itemName: itemName,
-                targetPrice: Number(price),
-                condition: condition, 
-                createdAt: Date.now()
-            });
-
+            await db.collection('priceAlerts').add({ userId: interaction.user.id, userName: interaction.user.username, itemName: itemName, targetPrice: Number(price), condition: condition, createdAt: Date.now() });
             return interaction.reply({ content: `✅ **警報寫入成功！**\n資料庫已記錄：當【${itemName}】${condition} \`${price} 萬\` 時，將會以 **私訊 (DM)** 方式推播通知您！`, flags: MessageFlags.Ephemeral });
+        }
+
+        if (interaction.customId === 'modal_portfolio_add_search') {
+            const query = (interaction.fields.getTextInputValue('item_name') || '').toLowerCase();
+            const qty = parseInt(interaction.fields.getTextInputValue('qty'));
+            const cost = parseFloat(interaction.fields.getTextInputValue('cost'));
+            
+            if (qty <= 0 || isNaN(cost)) return interaction.reply({ content: '❌ 數量與成本輸入格式錯誤！', flags: MessageFlags.Ephemeral });
+
+            const uniqueItems = filterUniqueItems(query);
+            if (uniqueItems.length === 0) return interaction.reply({ content: `🔍 找不到包含 **${query}** 的報價！`, flags: MessageFlags.Ephemeral });
+
+            if (uniqueItems.length > 1) {
+                const options = uniqueItems.slice(0, 25).map(r => {
+                    const safeName = r.name.substring(0, 50); 
+                    return new StringSelectMenuOptionBuilder().setLabel(safeName).setValue(`${qty}_${cost}_${safeName}`).setDescription(`目前報價: ${r.price || '無報價'}`.substring(0, 100));
+                });
+                const dropdownRow = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('select_portfolio_add_result').setPlaceholder('請選擇要新增的精確物品...').addOptions(options));
+                return interaction.reply({ content: `🔍 找到多個物品，請選擇您實際持有的裝備：`, components: [dropdownRow], flags: MessageFlags.Ephemeral });
+            }
+
+            await addAssetToDb(interaction.user.id, uniqueItems[0].name, qty, cost);
+            return interaction.reply({ content: `✅ 成功將 **${uniqueItems[0].name}** (數量: ${qty}, 成本: ${cost}萬) 加入您的實體資產庫！\n請重新點選看板的「💼 個人資產庫」查看更新。`, flags: MessageFlags.Ephemeral });
+        }
+
+        if (interaction.customId.startsWith('modal_paper_')) {
+            const isBuy = interaction.customId.includes('buy');
+            const query = (interaction.fields.getTextInputValue('item_name') || '').toLowerCase();
+            const qty = parseInt(interaction.fields.getTextInputValue('qty'));
+            
+            if (qty <= 0) return interaction.reply({ content: '❌ 委託數量必須大於 0！', flags: MessageFlags.Ephemeral });
+
+            const uniqueItems = filterUniqueItems(query);
+            if (uniqueItems.length === 0) return interaction.reply({ content: `🔍 找不到報價，無法交易！`, flags: MessageFlags.Ephemeral });
+
+            if (uniqueItems.length > 1) {
+                const actionPrefix = isBuy ? 'buy' : 'sell';
+                const options = uniqueItems.slice(0, 25).map(r => {
+                    const safeName = r.name.substring(0, 50);
+                    return new StringSelectMenuOptionBuilder().setLabel(safeName).setValue(`${actionPrefix}_${qty}_${safeName}`).setDescription(`市價: ${r.price || '無'}`.substring(0, 100));
+                });
+                const dropdownRow = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('select_paper_trade_result').setPlaceholder(`請選擇要${isBuy ? '買入' : '賣出'}的精確物品...`).addOptions(options));
+                return interaction.reply({ content: `🔍 找到多個標的，請選擇：`, components: [dropdownRow], flags: MessageFlags.Ephemeral });
+            }
+
+            await processPaperTrade(interaction, uniqueItems[0].name, qty, isBuy ? '買入' : '賣出', uniqueItems[0].rawPrice);
+            return; 
         }
 
         if (interaction.customId === 'modal_market_cash') {
@@ -432,74 +702,74 @@ async function handleCommand(interaction, client) {
         }
     }
 
-    // 🌟 雙按鈕智慧路由發布系統
-    if (interaction.isButton() && interaction.customId) {
-        const cId = interaction.customId;
-        
-        if (cId.includes('_pubG_') || cId.includes('_pubF_')) {
-            const isGuildChannel = cId.includes('_pubG_');
-            const targetChannelId = isGuildChannel ? GUILD_CHANNEL_ID : FRIEND_CHANNEL_ID;
-            const channelName = isGuildChannel ? '🥳｜公會頻道' : '👄｜親友閒聊relax';
-
-            const targetChannel = await client.channels.fetch(targetChannelId).catch(() => null);
-            if (!targetChannel) return interaction.reply({ content: `❌ 找不到目標頻道 (${targetChannelId})，無法發布。`, flags: MessageFlags.Ephemeral });
-
-            // 處理查價發布 (從 App 面板發出)
-            if (cId.startsWith('publish_price_')) {
-                const parts = cId.split('_'); // publish_price_pubG_itemName_activeTf
-                const activeTf = parts[parts.length - 1]; 
-                const itemName = parts.slice(3, parts.length - 1).join('_'); 
-                
-                const itemData = getMarketItem(itemName);
-                if (!itemData) return interaction.reply({ content: '資料已過期，無法發布。', flags: MessageFlags.Ephemeral });
-
-                // 重新生成一包靜態發布用的 Embed
-                const payload = buildMarketMessage(itemData, activeTf, isGuildMember, client.user);
-                const pubEmbed = EmbedBuilder.from(payload.embeds[0]);
-                pubEmbed.setTitle(`📊 籌碼K線：${itemData.name} (由 ${interaction.user.username} 分享)`);
-                
-                try {
-                    await targetChannel.send({ embeds: [pubEmbed] });
-                    return interaction.update({ content: `✅ 已成功將查價資訊分享至 ${channelName}！`, components: [] });
-                } catch (err) {
-                    console.error('發送分享失敗:', err);
-                    return interaction.reply({ content: `❌ 發布失敗，機器人可能沒有該頻道的發言權限。`, flags: MessageFlags.Ephemeral });
-                }
-            }
-
-            // 處理其他系統發布 (直接轉傳原 Embed)
-            if (cId.startsWith('publish_arbitrage_') || cId.startsWith('publish_cash_') || cId.startsWith('publish_scroll_')) {
-                if (!interaction.message.embeds || interaction.message.embeds.length === 0) {
-                    return interaction.reply({ content: '❌ 無法取得原始圖表，發布失敗。', flags: MessageFlags.Ephemeral });
-                }
-
-                const originalEmbed = EmbedBuilder.from(interaction.message.embeds[0]);
-                
-                if (cId.startsWith('publish_arbitrage_')) originalEmbed.setTitle(`🎯 市場行情套利雷達 (由 ${interaction.user.username} 分享)`);
-                if (cId.startsWith('publish_cash_')) originalEmbed.setTitle(`💳 課金最佳化轉換試算 (由 ${interaction.user.username} 分享)`);
-                if (cId.startsWith('publish_scroll_')) originalEmbed.setTitle(`🧮 衝卷計算機試算結果 (由 ${interaction.user.username} 分享)`);
-                
-                try {
-                    await targetChannel.send({ embeds: [originalEmbed] });
-                    return interaction.update({ content: `✅ 已成功分享至 ${channelName}！`, components: [] });
-                } catch (err) {
-                    console.error('發送分享失敗:', err);
-                    return interaction.reply({ content: `❌ 發布失敗，機器人可能沒有該頻道的發言權限。`, flags: MessageFlags.Ephemeral });
-                }
-            }
-        }
-    }
-
     if (!interaction.isChatInputCommand()) return;
     const cmd = interaction.commandName;
 
-    if (['查價', '套利雷達', '課金指南', '衝卷試算'].includes(cmd)) {
+    if (cmd === '新增資產') {
+        const itemName = interaction.options.getString('物品名稱').toLowerCase();
+        const qty = interaction.options.getInteger('數量');
+        const cost = interaction.options.getNumber('購入成本');
+        
+        const allItems = getAllMarketItems() || [];
+        const uniqueItems = []; const seenNames = new Set();
+        for (const item of allItems) {
+            if (item.name && item.name.toLowerCase().includes(itemName) && !seenNames.has(item.name)) {
+                seenNames.add(item.name); uniqueItems.push(item);
+            }
+        }
+        
+        if (uniqueItems.length === 0) return interaction.reply({ content: `🔍 找不到包含 **${itemName}** 的物品！`, flags: MessageFlags.Ephemeral });
+
+        if (uniqueItems.length > 1) {
+            const options = uniqueItems.slice(0, 25).map(r => {
+                const safeName = r.name.substring(0, 50);
+                return new StringSelectMenuOptionBuilder().setLabel(safeName).setValue(`${qty}_${cost}_${safeName}`).setDescription(`市價: ${r.price}`);
+            });
+            const row = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('select_portfolio_add_result').setPlaceholder('請選擇精確物品...').addOptions(options));
+            return interaction.reply({ content: `🔍 找到多個物品，請選擇：`, components: [row], flags: MessageFlags.Ephemeral });
+        }
+
+        await addAssetToDb(interaction.user.id, uniqueItems[0].name, qty, cost);
+        return interaction.reply({ content: `✅ 成功將 **${uniqueItems[0].name}** (數量: ${qty}, 成本: ${cost}萬) 加入資產庫！\n可透過市場看板查詢總資產。`, flags: MessageFlags.Ephemeral });
+    }
+
+    if (cmd === '我的資產') {
+        const doc = await db.collection('userAssets').doc(interaction.user.id).get();
+        if (!doc.exists || !doc.data().items || Object.keys(doc.data().items).length === 0) {
+            return interaction.reply({ content: '📭 您的資產庫目前是空的！請使用 `/新增資產` 或是看板的按鈕來紀錄。', flags: MessageFlags.Ephemeral });
+        }
+        const items = doc.data().items;
+        let totalCost = 0; let totalValue = 0; let desc = "";
+        for (const [name, info] of Object.entries(items)) {
+            if(info.qty <= 0) continue;
+            const marketData = getMarketItem(name);
+            const currentPrice = marketData ? (marketData.rawPrice || 0) : info.cost; 
+            const itemCostTotal = info.qty * info.cost;
+            const itemValueTotal = info.qty * currentPrice;
+            const pnl = itemValueTotal - itemCostTotal;
+            totalCost += itemCostTotal; totalValue += itemValueTotal;
+            const icon = pnl >= 0 ? '🔴' : '🟢'; 
+            desc += `**${name}** (數量: ${info.qty})\n└ 成本: \`${info.cost.toFixed(2)}萬\` | 現價: \`${currentPrice.toFixed(2)}萬\`\n└ 損益: ${icon} \`${pnl.toFixed(2)}萬\` (${itemCostTotal>0 ? (pnl/itemCostTotal*100).toFixed(2) : 0}%)\n\n`;
+        }
+        const totalPnl = totalValue - totalCost;
+        const embed = new EmbedBuilder().setColor(0x8B5CF6).setTitle(`💼 ${interaction.user.username} 的個人資產庫`)
+            .setDescription(`**投入總成本：** \`${totalCost.toFixed(2)} 萬\`\n**目前總市值：** \`${totalValue.toFixed(2)} 萬\`\n**未實現損益：** ${totalPnl >= 0 ? '🔴' : '🟢'} \`${totalPnl.toFixed(2)} 萬\` (${totalCost>0 ? (totalPnl/totalCost*100).toFixed(2) : 0}%)\n\n${desc}`);
+        return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+    }
+
+    if (cmd === '巨鯨雷達') {
+        const allItems = getAllMarketItems() || [];
+        const whales = allItems.filter(i => Math.abs(i.rawTrend) >= 15 && i.rawPrice > 0).sort((a, b) => Math.abs(b.rawTrend) - Math.abs(a.rawTrend));
+        if (whales.length === 0) return interaction.reply({ content: '🌊 目前市場風平浪靜，無明顯巨鯨活動。', flags: MessageFlags.Ephemeral });
+        let desc = whales.map(i => `**${i.name}**\n└ ${i.rawTrend > 0 ? '🚀 【大戶掃貨暴漲】' : '🩸 【大戶倒貨暴跌】'} \`${i.trend}\` (現價: ${i.price})`).join('\n\n');
+        const embed = new EmbedBuilder().setColor(0xEC4899).setTitle('🐳 巨鯨大戶異動雷達 (15% 振幅)').setDescription(desc);
+        return interaction.reply({ embeds: [embed] });
+    }
+
+    if (['查價', '折溢排行', '課金指南'].includes(cmd)) {
         
         if (interaction.channelId !== ALLOWED_MARKET_CHANNEL_ID) {
-            return interaction.reply({ 
-                content: `❌ 市場分析指令請移駕至 <#${ALLOWED_MARKET_CHANNEL_ID}> 頻道使用喔！`, 
-                flags: MessageFlags.Ephemeral 
-            });
+            return interaction.reply({ content: `❌ 市場分析指令請移駕至 <#${ALLOWED_MARKET_CHANNEL_ID}> 頻道使用喔！`, flags: MessageFlags.Ephemeral });
         }
 
         if (cmd === '查價') {
@@ -512,26 +782,20 @@ async function handleCommand(interaction, client) {
             return interaction.reply({ embeds: payload.embeds, components: payload.components, flags: MessageFlags.Ephemeral });
         }
 
-        if (cmd === '套利雷達') {
+        if (cmd === '折溢排行') {
             const allItems = getAllMarketItems();
-            let validItems = allItems.filter(i => i.rawTrend !== 0 && !isNaN(i.rawTrend));
-            
-            validItems.sort((a, b) => b.rawTrend - a.rawTrend);
-            
+            let validItems = allItems.filter(i => i.rawTrend !== 0 && !isNaN(i.rawTrend)).sort((a, b) => b.rawTrend - a.rawTrend);
             const premiumItems = validItems.slice(0, 5); 
             const discountItems = validItems.slice(-5).reverse(); 
 
             let premiumText = premiumItems.map((item, i) => `**${i+1}.** ${item.name} \n└ 📈 \`+${item.rawTrend.toFixed(2)}%\` (報價: ${item.price})`).join('\n\n');
             let discountText = discountItems.map((item, i) => `**${i+1}.** ${item.name} \n└ 📉 \`${item.rawTrend.toFixed(2)}%\` (報價: ${item.price})`).join('\n\n');
 
-            const embed = new EmbedBuilder()
-                .setColor(0x3B82F6)
-                .setTitle('🎯 市場行情套利雷達')
+            const embed = new EmbedBuilder().setColor(0x3B82F6).setTitle('🎯 折溢排行')
                 .addFields(
                     { name: '🔥 【溢價急漲區】(建議出售)', value: premiumText || '目前無顯著急漲物品', inline: true },
                     { name: '🧊 【折價超跌區】(建議掃貨)', value: discountText || '目前無顯著超跌物品', inline: true }
-                )
-                .setFooter({ text: '市場瞬息萬變，投資理財有賺有賠', iconURL: client.user.displayAvatarURL() });
+                ).setFooter({ text: '市場瞬息萬變，投資理財有賺有賠', iconURL: client.user.displayAvatarURL() });
 
             const btnRow = new ActionRowBuilder();
             if (isGuildMember) btnRow.addComponents(new ButtonBuilder().setCustomId('publish_arbitrage_pubG_0').setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success));
@@ -544,7 +808,6 @@ async function handleCommand(interaction, client) {
             const twd = interaction.options.getInteger('台幣金額');
             const rate = interaction.options.getNumber('點數比值') || 6.63;
             const totalWc = twd * rate;
-            
             const allItems = getAllMarketItems();
             let results = [];
 
@@ -553,16 +816,11 @@ async function handleCommand(interaction, client) {
                 const wcPrice = cashItemWcPrices[item.name] || cashItemWcPrices[cleanName];
                 if (wcPrice > 0 && item.rawPrice > 0) {
                     const totalMesos = (totalWc / wcPrice) * item.rawPrice;
-                    results.push({ 
-                        name: cleanName, 
-                        mesos: totalMesos, 
-                        efficiency: Math.floor(item.rawPrice / wcPrice) 
-                    });
+                    results.push({ name: cleanName, mesos: totalMesos, efficiency: Math.floor(item.rawPrice / wcPrice) });
                 }
             }
 
             if (results.length === 0) return interaction.reply({ content: '❌ 無法取得商城道具的報價資料。', flags: MessageFlags.Ephemeral });
-
             results.sort((a, b) => b.mesos - a.mesos);
             const topResults = results.slice(0, 3);
 
@@ -572,148 +830,10 @@ async function handleCommand(interaction, client) {
                 descText += `**${i+1}. 買【${res.name}】去賣**\n└ 預估可得楓幣：💰 **\`${mesoStr}\`** (效率: ${res.efficiency.toLocaleString()} 楓幣/WC)\n\n`;
             });
 
-            const embed = new EmbedBuilder()
-                .setColor(0xF59E0B)
-                .setTitle('💳 台幣 (TWD) ➡️ 楓幣 最佳化轉換試算')
-                .setDescription(descText);
-
+            const embed = new EmbedBuilder().setColor(0xF59E0B).setTitle('💳 台幣 (TWD) ➡️ 楓幣 最佳化轉換試算').setDescription(descText);
             const btnRow = new ActionRowBuilder();
             if (isGuildMember) btnRow.addComponents(new ButtonBuilder().setCustomId('publish_cash_pubG_0').setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success));
             btnRow.addComponents(new ButtonBuilder().setCustomId('publish_cash_pubF_0').setLabel('📢 發布至親友閒聊').setStyle(ButtonStyle.Primary));
-
-            return interaction.reply({ embeds: [embed], components: [btnRow], flags: MessageFlags.Ephemeral });
-        }
-
-        if (cmd === '衝卷試算') {
-            const equipPrice = interaction.options.getNumber('裝備底價'); 
-            const slots = interaction.options.getInteger('裝備總衝數') || interaction.options.getInteger('剩餘次數');
-            const target = interaction.options.getInteger('目標過數') || slots;
-            const tolerance = interaction.options.getInteger('容許失敗數') ?? slots; 
-            
-            const s1Count = interaction.options.getInteger('主力卷張數'); 
-
-            const s1Price = interaction.options.getNumber('主力卷價格') || interaction.options.getNumber('卷軸價格');
-            const s1Prob = interaction.options.getInteger('主力卷成功率') || interaction.options.getInteger('成功率');
-            const s1Dest = interaction.options.getInteger('主力卷毀損率') || interaction.options.getInteger('毀損率') || 0;
-            
-            const s2Price = interaction.options.getNumber('備用卷價格') || 0;
-            const s2Prob = interaction.options.getInteger('備用卷成功率') || 0;
-            const s2Dest = interaction.options.getInteger('備用卷毀損率') || 0;
-            
-            const cssPrice = interaction.options.getNumber('純白卷價格') || 0;
-            const cssProb = interaction.options.getInteger('純白成功率') || 0;
-            const cssDest = interaction.options.getInteger('純白毀損率') || 0;
-            
-            const marketPrice = interaction.options.getNumber('成品市價') || 0;
-
-            if (s1Prob <= 0 || s1Prob > 100) return interaction.reply({ content: '❌ 成功率請輸入 1~100 之間的數字！', flags: MessageFlags.Ephemeral });
-            if (target > slots) return interaction.reply({ content: '❌ 目標過數不能大於總衝數！', flags: MessageFlags.Ephemeral });
-
-            const s1Fail = Math.max(0, 100 - s1Prob - s1Dest);
-            const s2Enabled = s2Price > 0 && s2Prob > 0;
-            const s2Fail = s2Enabled ? Math.max(0, 100 - s2Prob - s2Dest) : 0;
-            const cssEnabled = cssPrice > 0 && cssProb > 0;
-            const cssFail = cssEnabled ? Math.max(0, 100 - cssProb - cssDest) : 0;
-
-            const getExpectedCostMatrix = (resetCost) => {
-                let V = Array(target + 1).fill(0).map(() => Array(tolerance + 2).fill(resetCost));
-                for (let f = 0; f <= tolerance; f++) V[target][f] = 0;
-
-                for (let k = target - 1; k >= 0; k--) {
-                    for (let iter = 0; iter < 100; iter++) { 
-                        for (let f = tolerance; f >= 0; f--) {
-                            let costGiveup = resetCost;
-                            let costScroll = resetCost;
-                            
-                            let usedSlots = k + f; 
-                            if (usedSlots < slots) {
-                                let c1 = s1Price + (s1Prob/100)*V[k+1][f] + (s1Fail/100)*V[k][f+1] + (s1Dest/100)*resetCost;
-                                let c2 = Infinity;
-                                if (s2Enabled) {
-                                    c2 = s2Price + (s2Prob/100)*V[k+1][f] + (s2Fail/100)*V[k][f+1] + (s2Dest/100)*resetCost;
-                                }
-
-                                if (s1Count !== null && s2Enabled) {
-                                    if (usedSlots < s1Count) {
-                                        costScroll = c1; 
-                                    } else {
-                                        costScroll = c2; 
-                                    }
-                                } else {
-                                    costScroll = Math.min(c1, c2); 
-                                }
-                            }
-
-                            let costCss = Infinity;
-                            if (f > 0 && cssEnabled) {
-                                let denom = 1 - (cssFail / 100);
-                                if (denom > 0) {
-                                    costCss = (cssPrice + (cssProb/100)*V[k][f-1] + (cssDest/100)*resetCost) / denom;
-                                }
-                            }
-                            
-                            V[k][f] = Math.min(costGiveup, costScroll, costCss);
-                        }
-                    }
-                }
-                return V;
-            };
-
-            let low = 0, high = 1e12; 
-            let optimalCost = 0;
-            for (let i = 0; i < 80; i++) {
-                let mid = (low + high) / 2;
-                let optV = getExpectedCostMatrix(mid);
-                if (optV[0][0] + equipPrice < mid) {
-                    high = mid;
-                } else {
-                    low = mid;
-                }
-            }
-            optimalCost = high;
-
-            let embed = new EmbedBuilder()
-                .setTitle('🧮 衝卷計算機')
-                .setColor(0x10B981);
-
-            let desc = `**裝備底價:** ${equipPrice} 萬 | **總衝數:** ${slots}\n`;
-            desc += `**目標:** ${slots} 過 ${target} | **容許失敗:** ${tolerance === slots ? '無限制 (盲衝)' : tolerance + ' 次 (停損)'}\n`;
-            
-            if (s1Count !== null && s2Enabled) {
-                desc += `**第一階段 (前${s1Count}張):** ${s1Price}萬 (${s1Prob}% / 爆${s1Dest}%)\n`;
-                desc += `**第二階段 (後續卷):** ${s2Price}萬 (${s2Prob}% / 爆${s2Dest}%)\n`;
-            } else {
-                desc += `**主力卷軸:** ${s1Price}萬 (${s1Prob}% / 爆${s1Dest}%)\n`;
-                if (s2Enabled) desc += `**備用/墊刀卷:** ${s2Price}萬 (${s2Prob}% / 爆${s2Dest}%)\n`;
-            }
-            
-            if (cssEnabled) desc += `**純白救援:** ${cssPrice}萬 (${cssProb}% / 爆${cssDest}%)\n`;
-            
-            let costStr = optimalCost >= 10000 ? `${(optimalCost / 10000).toFixed(2)} 億` : `${Math.floor(optimalCost).toLocaleString()} 萬`;
-
-            desc += `\n🎯 **AI 最佳化預期總造價:** \`${costStr}\`\n`;
-
-            if (marketPrice > 0) {
-                let profit = marketPrice - optimalCost;
-                let profitStr = Math.abs(profit) >= 10000 ? `${(Math.abs(profit) / 10000).toFixed(2)} 億` : `${Math.floor(Math.abs(profit)).toLocaleString()} 萬`;
-                let marketStr = marketPrice >= 10000 ? `${(marketPrice / 10000).toFixed(2)} 億` : `${marketPrice.toLocaleString()} 萬`;
-                
-                desc += `\n🛒 **成品市價:** ${marketStr}\n`;
-                if (profit > 0) {
-                    desc += `📈 **投資建議:** **強烈建議製作！** (預期淨賺 \`${profitStr}\`)\n`;
-                } else {
-                    desc += `📉 **投資建議:** **直接買現成的！** (自己衝預期會虧損 \`${profitStr}\`)\n`;
-                }
-            }
-            
-            desc += `\n*(💡 內部運算：模擬千萬次停損、混卷與純白救援之數學最佳解)*`;
-
-            embed.setDescription(desc)
-                 .setFooter({ text: '※ 期望造價僅供參考，請衡量自身歐非體質', iconURL: client.user.displayAvatarURL() });
-
-            const btnRow = new ActionRowBuilder();
-            if (isGuildMember) btnRow.addComponents(new ButtonBuilder().setCustomId('publish_scroll_pubG_0').setLabel('📢 發布至公會頻道').setStyle(ButtonStyle.Success));
-            btnRow.addComponents(new ButtonBuilder().setCustomId('publish_scroll_pubF_0').setLabel('📢 發布至親友閒聊').setStyle(ButtonStyle.Primary));
 
             return interaction.reply({ embeds: [embed], components: [btnRow], flags: MessageFlags.Ephemeral });
         }
@@ -829,11 +949,13 @@ async function handleCommand(interaction, client) {
                 .setTitle('📊 【 Artale 楓之股｜市場輔助看板 】 📊')
                 .setDescription('👇 **請點擊下方選單，選擇您要使用的市場服務：**\n\n' +
                     '🔍 **即時查價**：查詢全服最新物價與趨勢K線圖\n' +
-                    '🎯 **套利雷達**：列出目前全市場溢價與折價排行 Top 5\n' +
+                    '🎯 **折溢排行**：列出目前全市場溢價與折價排行 Top 5\n' +
                     '💳 **課金指南**：台幣最大化轉換楓幣的高效率方案\n' +
                     '🚨 **價格警報**：設定個人專屬的觸價私訊推播提醒\n' +
                     '📋 **我的警報**：查看與管理目前已設定的警報清單\n' +
-                    '🧮 **衝卷試算**：精密規劃計算最佳造價與停損評估\n\n' +
+                    '💼 **個人資產庫**：追蹤你的真實楓幣資產與未實現損益\n' +
+                    '🏆 **虛擬炒股大賽**：免費開戶！用百億虛擬金練習眼光\n' +
+                    '🐳 **巨鯨大戶雷達**：掃描市場上暴漲暴跌的異常物品\n\n' +
                     '*💡 查詢結果僅自己可見，點擊📢 分享按鈕，可以將資訊分享給親友！*')
                 .setColor('#F59E0B');
 
@@ -842,11 +964,13 @@ async function handleCommand(interaction, client) {
                 .setPlaceholder('請選擇市場功能...')
                 .addOptions([
                     { label: '即時查價', description: '查詢特定物品最新價格', value: 'market_price', emoji: '🔍' },
-                    { label: '套利雷達', description: '全服漲跌幅最大排行榜', value: 'market_arbitrage', emoji: '🎯' },
+                    { label: '折溢排行', description: '全服漲跌幅最大排行榜', value: 'market_arbitrage', emoji: '🎯' },
                     { label: '課金指南', description: '台幣換楓幣最佳方案', value: 'market_cash', emoji: '💳' },
-                    { label: '價格警報', description: '跌破或突破指定價格時私訊通知', value: 'market_alert_set', emoji: '🚨' },
+                    { label: '價格警報', description: '設定跌破或突破指定價格時的通知', value: 'market_alert_set', emoji: '🚨' },
                     { label: '我的警報', description: '管理已設定的警報', value: 'market_alert_list', emoji: '📋' },
-                    { label: '衝卷試算', description: '計算期望造價與停損', value: 'market_scroll', emoji: '🧮' }
+                    { label: '個人資產庫', description: '追蹤你的真實楓幣資產與未實現損益', value: 'portfolio_view', emoji: '💼' },
+                    { label: '虛擬炒股大賽', description: '免費開戶！用虛擬金練習投資眼光', value: 'paper_trade', emoji: '🏆' },
+                    { label: '巨鯨大戶雷達', description: '掃描市場上暴漲暴跌的異常物品', value: 'whale_alert', emoji: '🐳' }
                 ]);
 
             await interaction.reply({ content: '✅ 市場看板發布成功！', flags: MessageFlags.Ephemeral });
