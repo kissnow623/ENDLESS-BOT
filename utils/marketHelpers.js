@@ -51,11 +51,7 @@ const updateMarketData = async () => {
 
             for (let i = 1; i < headers.length; i++) {
                 const itemName = headers[i];
-                
                 let currentPrice = null;
-                let prevPrice = null;
-                
-                // 🌟 新增：存放歷史詳細數據的陣列，用來切出不同時間軸
                 let rawHistory = [];
                 
                 for (let r = 0; r < data.rows.length; r++) {
@@ -76,39 +72,45 @@ const updateMarketData = async () => {
                                 priceWan: (numVal / 10000).toFixed(0),
                                 label: `${mm}/${dd} ${hh}:00`
                             });
-                            
-                            prevPrice = currentPrice;
                             currentPrice = cellVal;
                         }
                     }
                 }
 
                 if (itemName && currentPrice !== null && rawHistory.length > 0) {
-                    let trendStr = '--';
-                    let rawTrendValue = 0;
                     const currNum = Number(currentPrice);
-                    const prevNum = Number(prevPrice);
-
-                    if (!isNaN(currNum) && prevPrice !== null && !isNaN(prevNum) && prevNum > 0) {
-                        const diff = currNum - prevNum;
-                        if (diff === 0) {
-                            trendStr = '持平 ➖';
-                        } else {
-                            const percent = ((diff / prevNum) * 100);
-                            rawTrendValue = percent; // 🌟 存原始數字供雷達排序
-                            trendStr = diff > 0 ? `▲ +${percent.toFixed(2)}%` : `▼ ${percent.toFixed(2)}%`;
-                        }
-                    } else if (prevPrice === null) {
-                        trendStr = '🆕 新上架/近期無交易';
-                    }
-
-                    // 🌟 核心動態切片引擎：依據最新一筆資料的時間，往前推算擷取特定時段的數據
                     const lastTime = rawHistory[rawHistory.length - 1].timeMs;
                     
+                    // 🌟 動態推算 24H 與 48H 前的價格，算出真正的區間漲跌幅
+                    const getTrend = (hours) => {
+                        const threshold = lastTime - (hours * 60 * 60 * 1000);
+                        let pastPoint = rawHistory.find(h => h.timeMs >= threshold);
+                        if (!pastPoint) pastPoint = rawHistory[0]; // 若找不到足夠舊的資料，取最舊的那筆
+                        
+                        const pastPrice = Number(pastPoint.priceWan);
+                        const currentPriceWan = Number(rawHistory[rawHistory.length - 1].priceWan);
+                        
+                        let trendStr = '持平 ➖';
+                        let rawTrendValue = 0;
+                        
+                        if (pastPrice > 0) {
+                            const diff = currentPriceWan - pastPrice;
+                            if (diff !== 0) {
+                                rawTrendValue = (diff / pastPrice) * 100;
+                                trendStr = diff > 0 ? `▲ +${rawTrendValue.toFixed(2)}%` : `▼ ${Math.abs(rawTrendValue).toFixed(2)}%`;
+                            }
+                        } else if (pastPrice === 0 && currentPriceWan > 0) {
+                            trendStr = '🆕 新上架';
+                        }
+                        return { trendStr, rawTrendValue };
+                    };
+
+                    const t24 = getTrend(24);
+                    const t48 = getTrend(48);
+
                     const getHistoryByHours = (hours) => {
                         const threshold = lastTime - (hours * 60 * 60 * 1000);
                         let filtered = rawHistory.filter(h => h.timeMs >= threshold);
-                        // 為了畫線，至少需要 2 個點。如果不夠（例如新上市），就退回取最後 2 筆防呆
                         if (filtered.length < 2) filtered = rawHistory.slice(-2);
                         return filtered;
                     };
@@ -118,7 +120,6 @@ const updateMarketData = async () => {
                     const data24h = getHistoryByHours(24);
                     const data48h = getHistoryByHours(48);
 
-                    // 產生各區間的 QuickChart 網址
                     const chartUrl6h = generateChartUrl(data6h.map(d => d.label), data6h.map(d => d.priceWan));
                     const chartUrl12h = generateChartUrl(data12h.map(d => d.label), data12h.map(d => d.priceWan));
                     const chartUrl24h = generateChartUrl(data24h.map(d => d.label), data24h.map(d => d.priceWan));
@@ -131,9 +132,13 @@ const updateMarketData = async () => {
                         name: String(itemName).trim(),
                         price: formattedPrice,
                         rawPrice: isNaN(currNum) ? 0 : currNum, 
-                        trend: trendStr,
-                        rawTrend: rawTrendValue,
-                        chartUrl: chartUrlAll, // 全區間作為預設值
+                        trend: t24.trendStr,            // 預設為 24H
+                        rawTrend: t24.rawTrendValue,
+                        trend24h: t24.trendStr,         // 獨立 24H 數值
+                        rawTrend24h: t24.rawTrendValue, 
+                        trend48h: t48.trendStr,         // 獨立 48H 數值
+                        rawTrend48h: t48.rawTrendValue,
+                        chartUrl: chartUrlAll,
                         chartUrl6h: chartUrl6h,
                         chartUrl12h: chartUrl12h,
                         chartUrl24h: chartUrl24h,
