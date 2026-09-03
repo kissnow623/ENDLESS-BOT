@@ -1,7 +1,7 @@
 // handlers/commandHandler.js
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, PermissionsBitField, MessageFlags } = require('discord.js');
 const { db, addDbStat, getCache } = require('../utils/firebase');
-const { config, getAgentRoleId, MARKET_CHANNEL_ID } = require('../utils/constants');
+const { config, getAgentRoleId, MARKET_CHANNEL_ID } = require('../config/constants'); // 🌟 已經將路徑修正為正確的 config/constants
 const { generateMemberLeaderboard, generateFriendLeaderboard, updateNickname } = require('../utils/guildHelpers');
 const { getTaiwanTime, updateBoard, checkIsAgent, buildAgentStatMessage, generateScheduleEmbed, broadcastToManagementAreas } = require('../utils/echoHelpers');
 const { sendStickerViaWebhook } = require('../utils/stickerHelpers');
@@ -283,15 +283,9 @@ async function handleCommand(interaction, client) {
         }
     }
 
-    // ==========================================
-    // 防呆機制：確保以下處理的都是斜線指令 (Slash Commands)
-    // ==========================================
     if (!interaction.isChatInputCommand()) return;
     const cmd = interaction.commandName;
 
-    // ------------------------------------------
-    // 📈 【物價進階分析指令區】
-    // ------------------------------------------
     if (['查價', '套利雷達', '課金指南', '衝卷試算'].includes(cmd)) {
         
         if (interaction.channelId !== ALLOWED_MARKET_CHANNEL_ID) {
@@ -301,7 +295,6 @@ async function handleCommand(interaction, client) {
             });
         }
 
-        // 🔍 一般查價
         if (cmd === '查價') {
             const itemName = interaction.options.getString('物品名稱');
             const itemData = getMarketItem(itemName);
@@ -328,7 +321,6 @@ async function handleCommand(interaction, client) {
             return interaction.reply({ embeds: [embed], components: [btnRow], flags: MessageFlags.Ephemeral });
         }
 
-        // ⚖️ 套利雷達
         if (cmd === '套利雷達') {
             const allItems = getAllMarketItems();
             let validItems = allItems.filter(i => i.rawTrend !== 0 && !isNaN(i.rawTrend));
@@ -357,7 +349,6 @@ async function handleCommand(interaction, client) {
             return interaction.reply({ embeds: [embed], components: [btnRow], flags: MessageFlags.Ephemeral });
         }
 
-        // 💳 課金指南
         if (cmd === '課金指南') {
             const twd = interaction.options.getInteger('台幣金額');
             const rate = interaction.options.getNumber('點數比值') || 6.63;
@@ -402,7 +393,6 @@ async function handleCommand(interaction, client) {
             return interaction.reply({ embeds: [embed], components: [btnRow], flags: MessageFlags.Ephemeral });
         }
 
-        // 🧮 衝卷試算
         if (cmd === '衝卷試算') {
             const equipPrice = interaction.options.getNumber('裝備底價'); 
             const slots = interaction.options.getInteger('裝備總衝數') || interaction.options.getInteger('剩餘次數');
@@ -538,9 +528,6 @@ async function handleCommand(interaction, client) {
         }
     }
 
-    // ------------------------------------------
-    // 🎭 【表情包系統指令區】
-    // ------------------------------------------
     if (['表情包', '批次新增表情包', '刪除表情包'].includes(cmd)) {
         
         if (cmd === '批次新增表情包') {
@@ -581,9 +568,6 @@ async function handleCommand(interaction, client) {
         }
     }
 
-    // ------------------------------------------
-    // 🎨 【貼圖系統指令區】
-    // ------------------------------------------
     if (['貼圖', '新增貼圖', '刪除貼圖'].includes(cmd)) {
         
         if (cmd === '新增貼圖') {
@@ -633,9 +617,6 @@ async function handleCommand(interaction, client) {
         }
     }
 
-    // ------------------------------------------
-    // 💎 【公會系統指令區】
-    // ------------------------------------------
     if (['解鎖權限', '發布小指南', '發布市場看板', '查詢目前公會成員', '查詢目前親友團', '同步更名', '清除資料', '清除訊息', '星光紅毯設定'].includes(cmd)) {
         
         if (cmd === '星光紅毯設定') {
@@ -763,9 +744,6 @@ async function handleCommand(interaction, client) {
         }
     }
 
-    // ------------------------------------------
-    // 👑 【迴響預約系統指令區】
-    // ------------------------------------------
     if (['預約', '我的紀錄', '接單統計', '查詢預約', '刷新看板', '註冊迴響專員', '指定迴響專員', '刪除迴響專員', '清理訊息', '設定公開看板', '設定管理看板', '迴響管理區', '價格', '迴響鬧鐘', '優惠設定', '同時段最大接單數', '系統狀態', '營運設定', '玩家管理', '刪除訂單'].includes(cmd)) {
         
         if (cmd === '預約') {
