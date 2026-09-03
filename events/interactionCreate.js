@@ -46,7 +46,15 @@ module.exports = {
             } 
             // 按鈕、下拉選單、表單 (Buttons, Select Menus, Modals)
             else if (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) {
-                await handleComponent(interaction, client);
+                const cId = interaction.customId || '';
+                
+                // 🌟 攔截市場看板的專屬元件，強制導向 commandHandler 處理
+                if (cId.includes('market_') || cId.startsWith('publish_')) {
+                    await handleCommand(interaction, client);
+                } else {
+                    // 其他舊有功能依然交由 componentHandler 處理
+                    await handleComponent(interaction, client);
+                }
             }
 
         } catch (globalError) {
