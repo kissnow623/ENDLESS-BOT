@@ -16,6 +16,7 @@ let lastWhaleHour = -1; // 用來防止同一個小時重複發布巨鯨警報
 const GUILD_CHANNEL_ID = '1539971422842261601'; 
 const FRIEND_CHANNEL_ID = '1544604459085070346'; 
 const WHALE_CHANNEL_ID = '1544604459085070346'; // 🌟 巨鯨雷達指定頻道
+const MORNING_REPORT_CHANNEL_ID = '1544604459085070346'; // 🌟 晨間報表指定頻道
 
 function startScheduler(client) {
     updateMarketData();
@@ -217,12 +218,18 @@ function startScheduler(client) {
                             { name: '🔥 【強勢上漲 Top 3】', value: pText, inline: true },
                             { name: '🧊 【弱勢下跌 Top 3】', value: dText, inline: true }
                         )
-                        .setFooter({ text: '投資有風險，請保持獨立判斷，審慎評估', iconURL: client.user.displayAvatarURL() });
+                        .setFooter({ text: '※ 舊報表已自動刪除。投資有風險，請保持獨立判斷', iconURL: client.user.displayAvatarURL() });
 
-                    const gChannel = await client.channels.fetch(GUILD_CHANNEL_ID).catch(() => null);
-                    if (gChannel) await gChannel.send({ embeds: [embed] });
-                    const fChannel = await client.channels.fetch(FRIEND_CHANNEL_ID).catch(() => null);
-                    if (fChannel) await fChannel.send({ embeds: [embed] });
+                    const mChannel = await client.channels.fetch(MORNING_REPORT_CHANNEL_ID).catch(() => null);
+                    if (mChannel) {
+                        // 🌟 自動找尋同頻道的舊報表並刪除 (防洗版功能)
+                        const msgs = await mChannel.messages.fetch({ limit: 30 }).catch(() => null);
+                        if (msgs) {
+                            const oldMsg = msgs.find(m => m.author.id === client.user.id && m.embeds[0] && m.embeds[0].title && m.embeds[0].title.includes('每日晨間大盤速報'));
+                            if (oldMsg) await oldMsg.delete().catch(() => null);
+                        }
+                        await mChannel.send({ embeds: [embed] });
+                    }
                 }
             }
         } catch (error) { console.error('❌ 發送晨間報表時發生錯誤：', error); }
