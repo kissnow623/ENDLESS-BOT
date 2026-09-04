@@ -1,6 +1,6 @@
 // handlers/marketHandler.js
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, MessageFlags } = require('discord.js');
-const { db, addDbStat } = require('../utils/firebase');
+const { db, addDbStat, admin } = require('../utils/firebase'); // 🌟 引入 admin 來操作遞增點擊率
 const { getMarketItem, getAllMarketItems } = require('../utils/marketHelpers'); 
 
 const cashItemWcPrices = {
@@ -13,8 +13,22 @@ const GUILD_CHANNEL_ID = '1539971422842261601';
 const FRIEND_CHANNEL_ID = '1544604459085070346'; 
 
 // ==========================================
-// 🤖 輔助引擎區：AI 診斷、資產、炒股、建構圖表
+// 🤖 輔助引擎區：AI 診斷、熱搜追蹤、建構圖表
 // ==========================================
+
+// 🌟 雙向回饋機制：幫原網站紀錄 Discord 端熱門搜尋排行榜
+async function trackItemActivity(itemName) {
+    try {
+        await db.collection('hotSearches').doc(itemName).set({
+            count: admin.firestore.FieldValue.increment(1),
+            lastActive: Date.now()
+        }, { merge: true });
+        addDbStat('write');
+    } catch (e) {
+        console.error("熱搜記錄失敗", e);
+    }
+}
+
 function getAITrendAnalysis(itemName, trendPercent) {
     const seed = itemName.length + Math.floor(Math.abs(trendPercent * 100)); 
     const rate = parseFloat(trendPercent);
@@ -149,7 +163,6 @@ function buildMarketMessage(itemData, activeTf, isGuildMember, clientUser) {
         ? "💡 如果有查詢48H以上需求，請檢視並加入Artale楓之谷VIP\n*(註：若切換按鈕後圖表未變化，表示市場暫無該時段圖表)*" 
         : "💡 如果有查詢24H以上需求，請檢視並加入Artale楓之谷VIP\n*(註：若切換按鈕後圖表未變化，表示市場暫無該時段圖表)*";
 
-    // 🌟 全新格式化排版與警語
     const riskNote = "⚠️ **投資有風險，請保持獨立判斷，審慎評估風險，以上診斷僅供參考，祝大家楓之股滿盆砵缽～**";
 
     const embed = new EmbedBuilder()
@@ -174,9 +187,11 @@ function buildMarketMessage(itemData, activeTf, isGuildMember, clientUser) {
 
     const btnRow = new ActionRowBuilder();
     if (isGuildMember) btnRow.addComponents(new ButtonBuilder().setCustomId(`publish_price_pubG_${safeName}_${activeTf}`).setLabel('📢 發布至公會').setStyle(ButtonStyle.Success));
+    
+    // 🌟 雙向回饋機制：把去網站的理由變得極具吸引力
     btnRow.addComponents(
         new ButtonBuilder().setCustomId(`publish_price_pubF_${safeName}_${activeTf}`).setLabel('📢 發布至親友').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setLabel('🌐 前往Artale楓之谷').setStyle(ButtonStyle.Link).setURL('https://artalestock.netlify.app/') 
+        new ButtonBuilder().setLabel('🌐 網頁版看詳細明細 (支持原作者)').setStyle(ButtonStyle.Link).setURL('https://artalestock.netlify.app/') 
     );
 
     return { embeds: [embed], components: [tfRow, btnRow] };
@@ -314,18 +329,12 @@ async function handleMarketInteraction(interaction, client, isGuildMember) {
 
             if (action === 'market_arbitrage') {
                 interaction.message.edit({ components: interaction.message.components }).catch(() => {});
-                
-                // 🌟 動態判斷 24H 或 48H
-                const is48H = isGuildMember;
-                const rawKey = is48H ? 'rawTrend48h' : 'rawTrend24h';
-                const tfText = is48H ? "過去 48H" : "過去 24H";
-
                 const allItems = getAllMarketItems();
-                let validItems = allItems.filter(i => i[rawKey] !== 0 && !isNaN(i[rawKey])).sort((a, b) => b[rawKey] - a[rawKey]);
-                
-                let pText = validItems.slice(0, 5).map((i, idx) => `**${idx+1}.** ${i.name} \n└ 📈 \`+${i[rawKey].toFixed(2)}%\` (${i.price})`).join('\n\n');
-                let dText = validItems.slice(-5).reverse().map((i, idx) => `**${idx+1}.** ${i.name} \n└ 📉 \`${i[rawKey].toFixed(2)}%\` (${i.price})`).join('\n\n');
+                let validItems = allItems.filter(i => i.rawTrend24h !== 0 && !isNaN(i.rawTrend24h)).sort((a, b) => b.rawTrend24h - a.rawTrend24h);
+                let pText = validItems.slice(0, 5).map((i, idx) => `**${idx+1}.** ${i.name} \n└ 📈 \`+${i.rawTrend24h.toFixed(2)}%\` (${i.price})`).join('\n\n');
+                let dText = validItems.slice(-5).reverse().map((i, idx) => `**${idx+1}.** ${i.name} \n└ 📉 \`${Math.abs(i.rawTrend24h).toFixed(2)}%\` (${i.price})`).join('\n\n');
 
+                const tfText = isGuildMember ? "48H" : "24H";
                 const embed = new EmbedBuilder().setColor(0x3B82F6).setTitle(`🎯 折溢排行 (${tfText}內變化)`)
                     .addFields({ name: `🔥 【溢價急漲區】(建議出售)`, value: pText || '無', inline: true }, { name: `🧊 【折價超跌區】(建議掃貨)`, value: dText || '無', inline: true })
                     .setFooter({ text: '⚠️ 投資有風險，請保持獨立判斷，審慎評估風險，祝大家楓之股滿盆砵缽～', iconURL: client.user.displayAvatarURL() });
@@ -453,8 +462,13 @@ async function handleMarketInteraction(interaction, client, isGuildMember) {
         }
 
         if (interaction.customId === 'select_market_price_result') {
-            const itemData = getMarketItem(interaction.values[0]);
+            const itemName = interaction.values[0];
+            const itemData = getMarketItem(itemName);
             if (!itemData) return interaction.reply({ content: `🔍 找不到報價！`, flags: MessageFlags.Ephemeral });
+            
+            // 🌟 記錄社群熱搜點擊
+            trackItemActivity(itemName);
+
             const payload = buildMarketMessage(itemData, '24h', isGuildMember, client.user);
             return interaction.update({ content: '✅ 查詢成功！', embeds: payload.embeds, components: payload.components });
         }
@@ -471,15 +485,25 @@ async function handleMarketInteraction(interaction, client, isGuildMember) {
 
         if (interaction.customId === 'select_portfolio_add_result') {
             const parts = interaction.values[0].split('_');
-            await addAssetToDb(interaction.user.id, parts.slice(2).join('_'), parseInt(parts[0]), parseFloat(parts[1]));
+            const itemName = parts.slice(2).join('_');
+            
+            // 🌟 記錄社群熱搜點擊
+            trackItemActivity(itemName);
+            
+            await addAssetToDb(interaction.user.id, itemName, parseInt(parts[0]), parseFloat(parts[1]));
             return interaction.update({ content: `✅ 成功加入資產庫！\n請重新點擊看板查看更新後的「💼 個人資產庫」。`, components: [] });
         }
 
         if (interaction.customId === 'select_paper_trade_result') {
             const parts = interaction.values[0].split('_'); 
-            const targetItem = getMarketItem(parts.slice(2).join('_'));
+            const itemName = parts.slice(2).join('_');
+            const targetItem = getMarketItem(itemName);
             if (!targetItem) return interaction.reply({ content: '❌ 物品已過期', flags: MessageFlags.Ephemeral });
-            await processPaperTrade(interaction, parts.slice(2).join('_'), parseInt(parts[1]), parts[0] === 'buy' ? '買入' : '賣出', (targetItem.rawPrice || 0) / 10000, true);
+            
+            // 🌟 記錄社群熱搜點擊
+            trackItemActivity(itemName);
+
+            await processPaperTrade(interaction, itemName, parseInt(parts[1]), parts[0] === 'buy' ? '買入' : '賣出', (targetItem.rawPrice || 0) / 10000, true);
         }
     }
 
@@ -504,6 +528,10 @@ async function handleMarketInteraction(interaction, client, isGuildMember) {
                 const dropdownRow = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('select_market_price_result').setPlaceholder('請選擇精確物品...').addOptions(options));
                 return interaction.reply({ content: `🔍 找到多個結果：`, components: [dropdownRow], flags: MessageFlags.Ephemeral });
             }
+            
+            // 🌟 記錄社群熱搜點擊
+            trackItemActivity(uniqueItems[0].name);
+
             const payload = buildMarketMessage(uniqueItems[0], '24h', isGuildMember, client.user);
             return interaction.reply({ embeds: payload.embeds, components: payload.components, flags: MessageFlags.Ephemeral });
         }
@@ -537,6 +565,8 @@ async function handleMarketInteraction(interaction, client, isGuildMember) {
                 const dropdownRow = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('select_portfolio_add_result').setPlaceholder('請選擇精確物品...').addOptions(options));
                 return interaction.reply({ content: `🔍 找到多個物品：`, components: [dropdownRow], flags: MessageFlags.Ephemeral });
             }
+            
+            trackItemActivity(uniqueItems[0].name);
             await addAssetToDb(interaction.user.id, uniqueItems[0].name, qty, cost);
             return interaction.reply({ content: `✅ 成功加入資產庫！`, flags: MessageFlags.Ephemeral });
         }
@@ -554,6 +584,8 @@ async function handleMarketInteraction(interaction, client, isGuildMember) {
                 const dropdownRow = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('select_paper_trade_result').setPlaceholder(`請選擇物品...`).addOptions(options));
                 return interaction.reply({ content: `🔍 找到多個標的：`, components: [dropdownRow], flags: MessageFlags.Ephemeral });
             }
+            
+            trackItemActivity(uniqueItems[0].name);
             const currentPriceInWan = (uniqueItems[0].rawPrice || 0) / 10000;
             await processPaperTrade(interaction, uniqueItems[0].name, qty, isBuy ? '買入' : '賣出', currentPriceInWan);
             return; 
@@ -616,7 +648,8 @@ async function handleMarketCommand(interaction, client, isGuildMember) {
             const row = new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('select_portfolio_add_result').setPlaceholder('請選擇精確物品...').addOptions(options));
             return interaction.reply({ content: `🔍 找到多個物品，請選擇：`, components: [row], flags: MessageFlags.Ephemeral });
         }
-
+        
+        trackItemActivity(uniqueItems[0].name);
         await addAssetToDb(interaction.user.id, uniqueItems[0].name, qty, cost);
         return interaction.reply({ content: `✅ 成功將 **${uniqueItems[0].name}** (數量: ${qty}, 成本: ${cost}萬) 加入資產庫！\n可透過市場看板查詢總資產。`, flags: MessageFlags.Ephemeral });
     }
@@ -663,6 +696,8 @@ async function handleMarketCommand(interaction, client, isGuildMember) {
             const itemName = interaction.options.getString('物品名稱');
             const itemData = getMarketItem(itemName);
             if (!itemData) return interaction.reply({ content: `🔍 找不到 **${itemName}** 的報價！`, flags: MessageFlags.Ephemeral });
+            
+            trackItemActivity(itemName);
             const payload = buildMarketMessage(itemData, '24h', isGuildMember, client.user);
             return interaction.reply({ embeds: payload.embeds, components: payload.components, flags: MessageFlags.Ephemeral });
         }
