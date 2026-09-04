@@ -11,12 +11,12 @@ const { updateMarketData, getAllMarketItems } = require('./marketHelpers');
 
 let lastLeaderboardMonth = -1;
 let lastMorningReportDay = -1;
-let lastWhaleHour = -1; // 用來防止同一個小時重複發布巨鯨警報
+let lastWhaleHour = -1; 
 
 const GUILD_CHANNEL_ID = '1539971422842261601'; 
 const FRIEND_CHANNEL_ID = '1544604459085070346'; 
-const WHALE_CHANNEL_ID = '1544604459085070346'; // 🌟 巨鯨雷達指定頻道
-const MORNING_REPORT_CHANNEL_ID = '1544604459085070346'; // 🌟 晨間報表指定頻道
+const WHALE_CHANNEL_ID = '1544604459085070346'; 
+const MORNING_REPORT_CHANNEL_ID = '1544604459085070346'; 
 
 function startScheduler(client) {
     updateMarketData();
@@ -210,10 +210,11 @@ function startScheduler(client) {
                     if (avgTrend > 2) marketMood = "🔥 強勢偏多格局";
                     if (avgTrend < -2) marketMood = "🥶 弱勢空頭殺盤";
 
+                    // 🌟 雙向回饋：加入冠名贊助與網頁連結
                     const embed = new EmbedBuilder()
                         .setColor(0xF59E0B)
-                        .setTitle(`🌅 Artale 楓之股｜每日晨間大盤速報`)
-                        .setDescription(`早安！為您總結過去 24H 內的市場行情。\n\n**🤖 總體市場氛圍**：\n> ${marketMood}`)
+                        .setTitle(`🌅 【Artale 楓之股】特約提供｜每日晨間大盤速報`)
+                        .setDescription(`早安！為您總結過去 24H 內的市場行情。\n\n**🤖 總體市場氛圍**：\n> ${marketMood}\n\n*本數據由 [Artale 楓之股](https://artalestock.netlify.app/) 獨家授權提供，歡迎點擊連結支持原作者！*`)
                         .addFields(
                             { name: '🔥 【強勢上漲 Top 3】', value: pText, inline: true },
                             { name: '🧊 【弱勢下跌 Top 3】', value: dText, inline: true }
@@ -222,7 +223,6 @@ function startScheduler(client) {
 
                     const mChannel = await client.channels.fetch(MORNING_REPORT_CHANNEL_ID).catch(() => null);
                     if (mChannel) {
-                        // 🌟 自動找尋同頻道的舊報表並刪除 (防洗版功能)
                         const msgs = await mChannel.messages.fetch({ limit: 30 }).catch(() => null);
                         if (msgs) {
                             const oldMsg = msgs.find(m => m.author.id === client.user.id && m.embeds[0] && m.embeds[0].title && m.embeds[0].title.includes('每日晨間大盤速報'));
@@ -235,7 +235,7 @@ function startScheduler(client) {
         } catch (error) { console.error('❌ 發送晨間報表時發生錯誤：', error); }
 
         // ------------------------------------------
-        // 🐳 E. 市場系統：巨鯨大戶異動警報 (每小時觸發，自動防洗版)
+        // 🐳 E. 市場系統：巨鯨大戶異動警報 (每小時觸發)
         // ------------------------------------------
         try {
             const currentHour = twTime.getUTCHours();
@@ -252,16 +252,16 @@ function startScheduler(client) {
                     }).join('\n\n');
                     
                     const unixTime = Math.floor(Date.now() / 1000);
+                    // 🌟 雙向回饋：加入冠名贊助與網頁連結
                     const embed = new EmbedBuilder()
                         .setColor(0xEC4899)
-                        .setTitle('🚨 巨鯨大戶異動警報 (過去 24H 變化)')
-                        .setDescription(`**發布時間**：<t:${unixTime}:F>\n\n系統偵測到市場出現異常波動標的：\n\n${desc}`)
+                        .setTitle('🚨 【Artale 楓之股】特約｜巨鯨大戶異動警報')
+                        .setDescription(`**發布時間**：<t:${unixTime}:F>\n\n系統偵測到市場出現異常波動標的 (過去24H變化)：\n\n${desc}\n\n*數據由 [Artale 楓之股](https://artalestock.netlify.app/) 授權提供*`)
                         .setTimestamp()
                         .setFooter({ text: '※ 為避免洗版，舊警報已自動刪除。投資有風險，請獨立判斷', iconURL: client.user.displayAvatarURL() });
 
                     const wChannel = await client.channels.fetch(WHALE_CHANNEL_ID).catch(() => null);
                     if (wChannel) {
-                        // 🌟 自動找尋同頻道的舊警報並刪除 (防洗版功能)
                         const msgs = await wChannel.messages.fetch({ limit: 15 }).catch(() => null);
                         if (msgs) {
                             const oldMsg = msgs.find(m => m.author.id === client.user.id && m.embeds[0] && m.embeds[0].title && m.embeds[0].title.includes('巨鯨大戶異動警報'));
